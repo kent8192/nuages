@@ -138,23 +138,59 @@ fn has_html_class_literal(source: &str) -> bool {
 			return false;
 		};
 		let tag = &tag[..tag_end];
-		if identifier_offsets(tag, "class").any(|index| {
-			let remainder = tag[index + "class".len()..].trim_start();
-			let Some(remainder) = remainder.strip_prefix('=') else {
-				return false;
-			};
-			let Some(value) = parse_html_attribute_value(remainder.trim_start()) else {
-				return false;
-			};
-			let value = value.trim();
-			!(value.starts_with('{') && value.ends_with('}'))
-		}) {
+		if has_html_class_attribute(tag) {
 			return true;
 		}
 		remainder = &remainder[tag_start + tag_end + 2..];
 	}
 
 	false
+}
+
+fn has_html_class_attribute(tag: &str) -> bool {
+	let mut quote = None;
+	let mut index = 0;
+
+	while index < tag.len() {
+		let remainder = &tag[index..];
+		if let Some((next_quote, width)) = html_quote(remainder) {
+			if quote.is_none() {
+				quote = Some(next_quote);
+			} else if quote == Some(next_quote) {
+				quote = None;
+			}
+			index += width;
+			continue;
+		}
+		if quote.is_none() && remainder.starts_with("class") && html_attribute_boundary(tag, index)
+		{
+			let remainder = remainder["class".len()..].trim_start();
+			let Some(remainder) = remainder.strip_prefix('=') else {
+				index += "class".len();
+				continue;
+			};
+			let Some(value) = parse_html_attribute_value(remainder.trim_start()) else {
+				return false;
+			};
+			let value = value.trim();
+			return !(value.starts_with('{') && value.ends_with('}'));
+		}
+		index += remainder
+			.chars()
+			.next()
+			.expect("tag is not empty")
+			.len_utf8();
+	}
+
+	false
+}
+
+fn html_attribute_boundary(tag: &str, index: usize) -> bool {
+	index == 0
+		|| tag[..index]
+			.chars()
+			.next_back()
+			.is_some_and(|character| character.is_ascii_whitespace())
 }
 
 fn html_tag_end(source: &str) -> Option<usize> {
@@ -383,6 +419,8 @@ fn source_gate_allows_generated_class_tokens() {
 		let classes: ClassList = STYLES.card() + selected;
 		element.set_attribute("class", classes.as_str());
 		element.set_inner_html(r#"<div class="{}"></div>"#);
+		element.set_inner_html(r#"<div data-class="metadata"></div>"#);
+		element.set_inner_html(r#"<div title="class=metadata"></div>"#);
 	"##;
 
 	// Act + Assert
