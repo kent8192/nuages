@@ -27,6 +27,7 @@ mod tests {
 	use crate::apps::auth::services::oauth::linking::{
 		LinkError, link_or_create_user, link_user_to_provider,
 	};
+	use crate::apps::auth::services::registration::ensure_personal_organization;
 	use crate::apps::organizations::models::OrganizationMembership;
 	use crate::config::test_helpers::build_test_app;
 	use reinhardt::UrlReverser;
@@ -220,6 +221,65 @@ mod tests {
 				.expect("load owner links")
 				.len(),
 			1
+		);
+	}
+
+	#[rstest]
+	#[tokio::test(flavor = "multi_thread")]
+	#[serial(database)]
+	async fn test_target_only_link_leaves_no_provider_link_for_revoked_membership(
+		#[future] db: (
+			ContainerAsync<GenericImage>,
+			MigrationDatabase,
+			APIClient,
+			Arc<UrlReverser>,
+		),
+	) {
+		// Arrange
+		let (_c, _conn, _cli, _urls) = db.await;
+		let user_id = seed_user("link_revoked", "revoked@example.com").await;
+		let user = User::objects()
+			.filter(User::field_id().eq(user_id))
+			.first()
+			.await
+			.expect("load target user")
+			.expect("seeded target user");
+		ensure_personal_organization(&user)
+			.await
+			.expect("provision Personal Organization");
+		let membership = OrganizationMembership::objects()
+			.filter(OrganizationMembership::field_user_id().eq(user_id))
+			.first()
+			.await
+			.expect("query Personal Organization membership")
+			.expect("Personal Organization membership should exist");
+		OrganizationMembership::objects()
+			.delete(membership.id.expect("membership should have an id"))
+			.await
+			.expect("revoke Personal Organization membership");
+		let storage = InMemorySocialAccountStorage::new();
+		let claims = github_claims("gh_revoked_1", Some("revoked@example.com"), Some(true));
+
+		// Act
+		let result = link_user_to_provider(&storage, "github", &claims, user).await;
+
+		// Assert
+		match result {
+			Err(LinkError::Database(message)) => assert_eq!(
+				message,
+				"Authorization error: Personal Organization membership is no longer active"
+			),
+			other => panic!("expected organization authorization failure, got {other:?}"),
+		}
+		assert_eq!(membership_count(user_id).await, 0);
+		assert_eq!(
+			storage
+				.find_by_user(user_id)
+				.await
+				.expect("load rejected target links")
+				.len(),
+			0,
+			"a rejected organization must not retain the provider link",
 		);
 	}
 

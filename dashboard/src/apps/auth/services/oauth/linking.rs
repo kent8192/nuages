@@ -89,7 +89,9 @@ pub async fn link_user_to_provider(
 			});
 		}
 	} else {
+		ensure_user_personal_organization(&user).await?;
 		create_link(storage, provider, claims, user.id).await?;
+		return Ok(user);
 	}
 	ensure_user_has_personal_organization(user).await
 }
@@ -134,8 +136,9 @@ pub async fn link_or_create_user(
 			// (d) New user.
 			create_oauth_user(provider, claims).await?
 		};
+		ensure_user_personal_organization(&user).await?;
 		create_link(storage, provider, claims, user.id).await?;
-		user
+		return Ok(user);
 	};
 	ensure_user_has_personal_organization(user).await
 }
