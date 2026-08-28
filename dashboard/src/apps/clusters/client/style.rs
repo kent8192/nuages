@@ -113,6 +113,7 @@ pub static STYLES: ClustersStyles = style! {
 		font-family: monospace;
 		font-size: 0.75rem;
 		white-space: pre-wrap;
+		word-break: break-all;
 	}
 	.token_dismiss {
 		min-height: 2.5rem;
@@ -167,6 +168,9 @@ pub static STYLES: ClustersStyles = style! {
 	.content_stack {
 		display: grid;
 		gap: 1.5rem;
+	}
+	.intro {
+		margin-top: 0.25rem;
 	}
 	.section_title {
 		margin-bottom: 0.75rem;

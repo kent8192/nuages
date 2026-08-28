@@ -177,6 +177,35 @@ fn success_alert(message: Signal<Option<String>>) -> Page {
 	})
 }
 
+fn render_cluster_token_confirmation(
+	token: ClusterTokenInfo,
+	dismiss: Callback<ClickEvent>,
+) -> Page {
+	page!({
+		div {
+			class: STYLES.token_notice(),
+			p {
+				class: STYLES.token_title(),
+				{ format!("{} is ready.", token.cluster.name) }
+			}
+			p {
+				class: STYLES.token_message(),
+				"Save this agent token now. It cannot be shown again."
+			}
+			code {
+				class: STYLES.token_value(),
+				{ token.auth_token }
+			}
+			button {
+				type: "button",
+				class: SHARED_STYLES.button_dark() + STYLES.token_dismiss(),
+				@click: dismiss,
+				"I have saved this token"
+			}
+		}
+	})
+}
+
 fn form_field_error<Field>(field_errors: Signal<HashMap<Field, FieldError>>, field: Field) -> Page
 where
 	Field: Copy + Eq + Hash + 'static,
@@ -413,31 +442,9 @@ fn render_rotate_cluster_token_action(view: RotateClusterTokenActionView) -> Pag
 			let is_pending = action.is_pending();
 			let is_confirmed = confirmed.get();
 			let has_selected_cluster = !cluster_id.get().trim().is_empty();
-			let token_confirmation = action.result().map(|token| {
-				page!({
-					div {
-						class: STYLES.token_notice(),
-						p {
-							class: STYLES.token_title(),
-							{ format!("{} is ready.", token.cluster.name) }
-						}
-						p {
-							class: STYLES.token_message(),
-							"Save this agent token now. It cannot be shown again."
-						}
-						code {
-							class: STYLES.token_value(),
-							{ token.auth_token }
-						}
-						button {
-							type: "button",
-							class: SHARED_STYLES.button_dark() + STYLES.token_dismiss(),
-							@click: dismiss,
-							"I have saved this token"
-						}
-					}
-				})
-			});
+			let token_confirmation = action
+				.result()
+				.map(|token| self::render_cluster_token_confirmation(token, dismiss.clone()));
 			let token_confirmation = token_confirmation.unwrap_or(Page::Empty);
 			page!({
 				{ error_view }
@@ -702,29 +709,7 @@ pub fn clusters_list_page() -> Page {
 					| UseFormAsyncSubmitOutcome::ValidationFailed => None,
 				})
 				.map(|token| {
-					page!({
-						div {
-							class: STYLES.token_notice(),
-							p {
-								class: STYLES.token_title(),
-								{ format!("{} is ready.", token.cluster.name) }
-							}
-							p {
-								class: STYLES.token_message(),
-								"Save this agent token now. It cannot be shown again."
-							}
-							code {
-								class: STYLES.token_value(),
-								{ token.auth_token }
-							}
-							button {
-								type: "button",
-								class: SHARED_STYLES.button_dark() + STYLES.token_dismiss(),
-								@click: create_dismiss,
-								"I have saved this token"
-							}
-						}
-					})
+					self::render_cluster_token_confirmation(token, create_dismiss.clone())
 				});
 			let token_confirmation = token_confirmation.unwrap_or(Page::Empty);
 			page!({
@@ -994,7 +979,6 @@ pub fn clusters_list_page() -> Page {
 		div {
 			class: SHARED_STYLES.shell(),
 			div {
-				class: STYLES.content_stack(),
 				div {
 					class: SHARED_STYLES.topline(),
 					div {
@@ -1007,7 +991,7 @@ pub fn clusters_list_page() -> Page {
 							"Clusters"
 						}
 						p {
-							class: SHARED_STYLES.muted(),
+							class: SHARED_STYLES.muted() + STYLES.intro(),
 							"Registered Kubernetes clusters and agent health."
 						}
 					}
@@ -1280,6 +1264,84 @@ mod tests {
 	use rstest::rstest;
 
 	use super::*;
+
+	fn cluster_info(id: i64, name: &str, is_active: bool) -> ClusterInfo {
+		ClusterInfo {
+			id,
+			name: name.to_owned(),
+			api_url: format!("https://{name}.example.com"),
+			is_active,
+			token_last_rotated_at: None,
+		}
+	}
+
+	#[test]
+	fn cluster_token_confirmation_renders_the_generated_token_value_class() {
+		ReactiveScope::run(|| {
+			// Arrange
+			let token = ClusterTokenInfo {
+				cluster: cluster_info(41, "production", true),
+				auth_token: "unbroken-agent-token".to_owned(),
+			};
+			let dismiss = Callback::new(|_: ClickEvent| {});
+
+			// Act
+			let html = render_cluster_token_confirmation(token, dismiss).render_to_string();
+
+			// Assert
+			assert!(
+				html.contains(&format!(
+					r#"<code class="{}">unbroken-agent-token</code>"#,
+					STYLES.token_value().as_str()
+				)),
+				"token display must render the generated value token: {html}"
+			);
+		});
+	}
+
+	#[test]
+	fn cluster_inventory_renders_generated_table_and_active_state_tokens() {
+		// Arrange
+		let clusters = vec![
+			cluster_info(41, "production", true),
+			cluster_info(42, "staging", false),
+		];
+
+		// Act
+		let html = render_cluster_inventory(clusters).render_to_string();
+
+		// Assert
+		assert!(
+			html.contains(&format!(
+				r#"<div class="{}">"#,
+				STYLES.inventory_scroll().as_str()
+			)),
+			"inventory must render its generated scroll token: {html}"
+		);
+		assert!(
+			html.contains(&format!(
+				r#"<tr class="{}">"#,
+				STYLES.inventory_row().as_str()
+			)),
+			"inventory must render its generated row token: {html}"
+		);
+		assert!(
+			html.contains(&format!(
+				r#"<span class="{} {}">Active</span>"#,
+				STYLES.cluster_badge().as_str(),
+				STYLES.cluster_badge_active().as_str()
+			)),
+			"active inventory badges must compose generated tokens: {html}"
+		);
+		assert!(
+			html.contains(&format!(
+				r#"<span class="{} {}">Inactive</span>"#,
+				STYLES.cluster_badge().as_str(),
+				STYLES.cluster_badge_inactive().as_str()
+			)),
+			"inactive inventory badges must compose generated tokens: {html}"
+		);
+	}
 
 	#[cfg(native)]
 	#[rstest]

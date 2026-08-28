@@ -7,6 +7,7 @@ const DASHBOARD_LAYOUT_SOURCE: &str = include_str!("../../src/apps/dashboard/cli
 const DASHBOARD_STYLE_SOURCE: &str = include_str!("../../src/apps/dashboard/client/style.rs");
 const CLUSTERS_CLIENT_SOURCE: &str = include_str!("../../src/apps/clusters/client.rs");
 const CLUSTERS_LIST_SOURCE: &str = include_str!("../../src/apps/clusters/client/pages/list.rs");
+const CLUSTERS_STYLE_SOURCE: &str = include_str!("../../src/apps/clusters/client/style.rs");
 const SHARED_IMPERATIVE_SOURCES: &[(&str, &str)] = &[
 	(
 		"entity_select",
@@ -190,5 +191,33 @@ fn clusters_page_uses_typed_shared_and_cluster_style_tokens() {
 	assert!(
 		CLUSTERS_CLIENT_SOURCE.contains("pub mod style;"),
 		"clusters client module must export its local style module"
+	);
+	assert!(
+		CLUSTERS_STYLE_SOURCE.contains("pub static STYLES: ClustersStyles = style!"),
+		"clusters must expose a unique generated style collection"
+	);
+	assert!(
+		CLUSTERS_STYLE_SOURCE.contains("word-break: break-all;"),
+		"one-time cluster tokens must break unbroken values before overflowing"
+	);
+	assert!(
+		CLUSTERS_LIST_SOURCE.contains("class: STYLES.page_layout()"),
+		"cluster page must render its generated responsive layout token"
+	);
+	assert!(
+		CLUSTERS_LIST_SOURCE.contains("class: STYLES.token_value()"),
+		"cluster token display must render its generated token token"
+	);
+	assert!(
+		CLUSTERS_LIST_SOURCE.contains("STYLES.cluster_badge() + self::cluster_badge_state"),
+		"cluster inventory badges must compose generated base and state tokens"
+	);
+	assert!(
+		CLUSTERS_LIST_SOURCE.contains("class: SHARED_STYLES.shell(),\n\t\t\tdiv {\n\t\t\t\tdiv {"),
+		"the page shell must not add a second outer content stack"
+	);
+	assert!(
+		CLUSTERS_LIST_SOURCE.contains("class: SHARED_STYLES.muted() + STYLES.intro()"),
+		"the cluster introduction must retain its local top margin"
 	);
 }
