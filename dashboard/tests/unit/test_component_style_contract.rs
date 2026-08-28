@@ -113,27 +113,83 @@ fn has_imperative_class_literal(source: &str) -> bool {
 }
 
 fn has_raw_html_class_literal(source: &str) -> bool {
-	identifier_offsets(source, "class").any(|index| {
-		if !is_html_class_attribute(source, index) {
-			return false;
+	let mut remainder = source;
+
+	while let Some(character) = remainder.chars().next() {
+		if let Some((literal, consumed)) = parse_rust_string_literal(remainder) {
+			if has_html_class_literal(literal) {
+				return true;
+			}
+			remainder = &remainder[consumed..];
+		} else {
+			remainder = &remainder[character.len_utf8()..];
 		}
-		let remainder = source[index + "class".len()..].trim_start();
-		let Some(remainder) = remainder.strip_prefix('=') else {
-			return false;
-		};
-		let Some(value) = parse_html_attribute_value(remainder.trim_start()) else {
-			return false;
-		};
-		let value = value.trim();
-		!(value.starts_with('{') && value.ends_with('}'))
-	})
+	}
+
+	false
 }
 
-fn is_html_class_attribute(source: &str, index: usize) -> bool {
-	let before = &source[..index];
-	before
-		.rfind('<')
-		.is_some_and(|tag_start| !before[tag_start..].contains('>'))
+fn has_html_class_literal(source: &str) -> bool {
+	let mut remainder = source;
+
+	while let Some(tag_start) = remainder.find('<') {
+		let tag = &remainder[tag_start + 1..];
+		let Some(tag_end) = html_tag_end(tag) else {
+			return false;
+		};
+		let tag = &tag[..tag_end];
+		if identifier_offsets(tag, "class").any(|index| {
+			let remainder = tag[index + "class".len()..].trim_start();
+			let Some(remainder) = remainder.strip_prefix('=') else {
+				return false;
+			};
+			let Some(value) = parse_html_attribute_value(remainder.trim_start()) else {
+				return false;
+			};
+			let value = value.trim();
+			!(value.starts_with('{') && value.ends_with('}'))
+		}) {
+			return true;
+		}
+		remainder = &remainder[tag_start + tag_end + 2..];
+	}
+
+	false
+}
+
+fn html_tag_end(source: &str) -> Option<usize> {
+	let mut quote = None;
+	let mut index = 0;
+
+	while index < source.len() {
+		let remainder = &source[index..];
+		if let Some((next_quote, width)) = html_quote(remainder) {
+			if quote.is_none() {
+				quote = Some(next_quote);
+			} else if quote == Some(next_quote) {
+				quote = None;
+			}
+			index += width;
+			continue;
+		}
+		if quote.is_none() && remainder.starts_with('>') {
+			return Some(index);
+		}
+		index += remainder.chars().next()?.len_utf8();
+	}
+
+	None
+}
+
+fn html_quote(source: &str) -> Option<(char, usize)> {
+	if source.starts_with("\\\"") {
+		return Some(('"', 2));
+	}
+	if source.starts_with("\\'") {
+		return Some(('\'', 2));
+	}
+	let quote = source.chars().next()?;
+	(quote == '"' || quote == '\'').then_some((quote, quote.len_utf8()))
 }
 
 fn identifier_offsets<'a>(
@@ -304,6 +360,11 @@ fn source_gate_rejects_literal_variants() {
 			r##"element.set_inner_html(r#"<div class=gap-4></div>"#);"##,
 			vec!["raw HTML utility class literal"],
 		),
+		(
+			"quoted greater-than HTML attribute",
+			r##"element.set_inner_html(r#"<div data-label=">" class="gap-4"></div>"#);"##,
+			vec!["raw HTML utility class literal"],
+		),
 	];
 
 	// Act + Assert
@@ -318,6 +379,7 @@ fn source_gate_allows_generated_class_tokens() {
 	let source = r##"
 		page!({ div { class: STYLES.card() + STYLES.selected() } });
 		let class = STYLES.card();
+		if width < breakpoint { let class = STYLES.compact(); }
 		let classes: ClassList = STYLES.card() + selected;
 		element.set_attribute("class", classes.as_str());
 		element.set_inner_html(r#"<div class="{}"></div>"#);
