@@ -162,7 +162,11 @@ fn has_html_class_attribute(tag: &str) -> bool {
 			index += width;
 			continue;
 		}
-		if quote.is_none() && remainder.starts_with("class") && html_attribute_boundary(tag, index)
+		if quote.is_none()
+			&& remainder
+				.get(.."class".len())
+				.is_some_and(|candidate| candidate.eq_ignore_ascii_case("class"))
+			&& html_attribute_boundary(tag, index)
 		{
 			let remainder = remainder["class".len()..].trim_start();
 			let Some(remainder) = remainder.strip_prefix('=') else {
@@ -399,6 +403,16 @@ fn source_gate_rejects_literal_variants() {
 		(
 			"quoted greater-than HTML attribute",
 			r##"element.set_inner_html(r#"<div data-label=">" class="gap-4"></div>"#);"##,
+			vec!["raw HTML utility class literal"],
+		),
+		(
+			"uppercase HTML class attribute",
+			r##"element.set_inner_html(r#"<div CLASS="gap-4"></div>"#);"##,
+			vec!["raw HTML utility class literal"],
+		),
+		(
+			"mixed-case HTML class attribute",
+			r##"element.set_inner_html(r#"<div Class="gap-4"></div>"#);"##,
 			vec!["raw HTML utility class literal"],
 		),
 	];
