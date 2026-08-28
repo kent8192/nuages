@@ -66,22 +66,121 @@ fn source_style_violations(source: &str) -> Vec<&'static str> {
 		}
 	}
 
-	if source.contains("class: \"") {
+	if has_page_class_literal(source) {
 		violations.push("raw page class literal");
 	}
-	if source.contains("set_attribute(\"class\", \"") {
+	if has_imperative_class_literal(source) {
 		violations.push("imperative utility class literal");
 	}
-	if source.match_indices("class=\"").any(|(index, _)| {
-		source[index + "class=\"".len()..]
-			.chars()
-			.next()
-			.is_some_and(|character| character != '{')
-	}) {
+	if has_raw_html_class_literal(source) {
 		violations.push("raw HTML utility class literal");
 	}
 
 	violations
+}
+
+fn has_page_class_literal(source: &str) -> bool {
+	identifier_offsets(source, "class").any(|index| {
+		let Some(remainder) = source[index + "class".len()..].strip_prefix(':') else {
+			return false;
+		};
+		parse_rust_string_literal(remainder.trim_start()).is_some()
+	})
+}
+
+fn has_imperative_class_literal(source: &str) -> bool {
+	["set_attribute", "attr"].into_iter().any(|method| {
+		identifier_offsets(source, method).any(|index| {
+			let remainder = source[index + method.len()..].trim_start();
+			let Some(remainder) = remainder.strip_prefix('(') else {
+				return false;
+			};
+			let Some((attribute, consumed)) = parse_rust_string_literal(remainder.trim_start())
+			else {
+				return false;
+			};
+			if attribute != "class" {
+				return false;
+			}
+			let remainder = remainder.trim_start()[consumed..].trim_start();
+			let Some(remainder) = remainder.strip_prefix(',') else {
+				return false;
+			};
+			parse_rust_string_literal(remainder.trim_start()).is_some()
+		})
+	})
+}
+
+fn has_raw_html_class_literal(source: &str) -> bool {
+	identifier_offsets(source, "class").any(|index| {
+		let remainder = source[index + "class".len()..].trim_start();
+		let Some(remainder) = remainder.strip_prefix('=') else {
+			return false;
+		};
+		let Some(value) = parse_html_attribute_value(remainder.trim_start()) else {
+			return false;
+		};
+		let value = value.trim();
+		!(value.starts_with('{') && value.ends_with('}'))
+	})
+}
+
+fn identifier_offsets<'a>(
+	source: &'a str,
+	identifier: &'a str,
+) -> impl Iterator<Item = usize> + 'a {
+	source
+		.match_indices(identifier)
+		.filter_map(move |(index, _)| {
+			let before = source[..index].chars().next_back();
+			let after = source[index + identifier.len()..].chars().next();
+			(!before.is_some_and(is_identifier_character)
+				&& !after.is_some_and(is_identifier_character))
+			.then_some(index)
+		})
+}
+
+fn is_identifier_character(character: char) -> bool {
+	character.is_ascii_alphanumeric() || character == '_'
+}
+
+fn parse_rust_string_literal(source: &str) -> Option<(&str, usize)> {
+	if let Some(remainder) = source.strip_prefix('"') {
+		let mut escaped = false;
+		for (index, character) in remainder.char_indices() {
+			if character == '"' && !escaped {
+				return Some((&remainder[..index], index + 2));
+			}
+			escaped = character == '\\' && !escaped;
+			if character != '\\' {
+				escaped = false;
+			}
+		}
+		return None;
+	}
+
+	let raw = source.strip_prefix('r')?;
+	let hashes = raw
+		.chars()
+		.take_while(|character| *character == '#')
+		.count();
+	let remainder = raw.strip_prefix(&"#".repeat(hashes))?.strip_prefix('"')?;
+	let terminator = format!("\"{}", "#".repeat(hashes));
+	let index = remainder.find(&terminator)?;
+	Some((
+		&remainder[..index],
+		1 + hashes + 1 + index + terminator.len(),
+	))
+}
+
+fn parse_html_attribute_value(source: &str) -> Option<&str> {
+	let quote = source.chars().next()?;
+	if quote != '"' && quote != '\'' {
+		return None;
+	}
+	let remainder = &source[quote.len_utf8()..];
+	let index = remainder.find(quote)?;
+	Some(&remainder[..index])
 }
 
 fn production_client_sources() -> Vec<PathBuf> {
@@ -113,37 +212,107 @@ fn collect_rust_sources(directory: &Path, paths: &mut Vec<PathBuf>) {
 }
 
 fn is_production_client_source(path: &Path, source_root: &Path) -> bool {
-	path.file_name().is_some_and(|name| name == "client.rs")
-		|| path
-			.strip_prefix(source_root)
-			.expect("source path must remain under src")
-			.components()
-			.any(|component| component.as_os_str() == "client")
+	let components = path
+		.strip_prefix(source_root)
+		.expect("source path must remain under src")
+		.components()
+		.map(|component| component.as_os_str().to_string_lossy())
+		.collect::<Vec<_>>();
+
+	let app_client = components.len() >= 3
+		&& components[0] == "apps"
+		&& ((components.len() == 3 && components[2] == "client.rs")
+			|| (components.len() >= 4 && components[2] == "client"));
+	let shared_client =
+		(components.len() == 2 && components[0] == "shared" && components[1] == "client.rs")
+			|| (components.len() >= 3 && components[0] == "shared" && components[1] == "client");
+
+	app_client || shared_client
 }
 
 #[test]
-fn source_gate_rejects_forbidden_style_inputs() {
+fn source_gate_rejects_literal_variants() {
+	// Arrange
+	let cases = [
+		(
+			"raw page string",
+			"page!({ div { class:r#\"p-4\"# } });",
+			vec!["raw page class literal"],
+		),
+		(
+			"case-insensitive framework references",
+			"let legacy = \"uNoCsS TaIlWiNd\";",
+			vec!["unocss reference", "tailwind reference"],
+		),
+		(
+			"newline page string",
+			"page!({ div { class:\n\t\"p-4\" } });",
+			vec!["raw page class literal"],
+		),
+		(
+			"imperative string",
+			"element.set_attribute(\"class\",\"flex\");",
+			vec!["imperative utility class literal"],
+		),
+		(
+			"imperative raw string",
+			"element.attr(\"class\", r###\"grid\"###);",
+			vec!["imperative utility class literal"],
+		),
+		(
+			"double quoted HTML",
+			r##"element.set_inner_html(r#"<div class = "gap-4"></div>"#);"##,
+			vec!["raw HTML utility class literal"],
+		),
+		(
+			"single quoted HTML",
+			r##"element.set_inner_html(r#"<div class='gap-4'></div>"#);"##,
+			vec!["raw HTML utility class literal"],
+		),
+	];
+
+	// Act + Assert
+	for (name, source, expected) in cases {
+		assert_eq!(source_style_violations(source), expected, "{name}");
+	}
+}
+
+#[test]
+fn source_gate_allows_generated_class_tokens() {
 	// Arrange
 	let source = r##"
-		page!({ div { class: "p-4" } });
-		element.set_attribute("class", "flex");
-		element.set_inner_html(r#"<div class="gap-4"></div>"#);
-		let framework = "TaIlWiNd";
+		page!({ div { class: STYLES.card() + STYLES.selected() } });
+		let classes: ClassList = STYLES.card() + selected;
+		element.set_attribute("class", classes.as_str());
+		element.set_inner_html(r#"<div class="{}"></div>"#);
 	"##;
 
-	// Act
-	let violations = source_style_violations(source);
+	// Act + Assert
+	assert!(source_style_violations(source).is_empty());
+}
 
-	// Assert
-	assert_eq!(
-		violations,
-		vec![
-			"tailwind reference",
-			"raw page class literal",
-			"imperative utility class literal",
-			"raw HTML utility class literal",
-		]
-	);
+#[test]
+fn source_gate_limits_scanning_to_app_and_shared_client_modules() {
+	// Arrange
+	let source_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+	let cases = [
+		("apps/auth/client.rs", true),
+		("apps/auth/client/pages/login.rs", true),
+		("shared/client.rs", true),
+		("shared/client/components/toast.rs", true),
+		("apps/github/services/client.rs", false),
+		("apps/auth/services.rs", false),
+		("client.rs", false),
+	];
+
+	// Act + Assert
+	for (relative_path, expected) in cases {
+		assert_eq!(
+			is_production_client_source(&source_root.join(relative_path), &source_root),
+			expected,
+			"{relative_path}"
+		);
+	}
 }
 
 #[test]
@@ -181,14 +350,20 @@ fn generated_component_stylesheet_is_the_only_document_style_runtime() {
 	let document = INDEX_HTML.to_ascii_lowercase();
 
 	// Act
-	let unocss_references = document.matches("unocss").count();
+	let forbidden_framework_references = ["unocss", "tailwind"]
+		.into_iter()
+		.map(|framework| (framework, document.matches(framework).count()))
+		.collect::<Vec<_>>();
 	let component_stylesheet_links = document.matches("__reinhardt__/components.css").count();
 	let has_component_stylesheet_link = document.contains(
 		r#"<link rel="stylesheet" href='{{ static_url("__reinhardt__/components.css") }}'>"#,
 	);
 
 	// Assert
-	assert_eq!(unocss_references, 0);
+	assert_eq!(
+		forbidden_framework_references,
+		[("unocss", 0), ("tailwind", 0)]
+	);
 	assert_eq!(component_stylesheet_links, 1);
 	assert!(
 		has_component_stylesheet_link,
