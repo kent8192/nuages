@@ -1,5 +1,6 @@
 //! Source-level contracts for Dashboard's generated component stylesheet.
 
+use rstest::rstest;
 use std::{
 	fs,
 	path::{Path, PathBuf},
@@ -346,7 +347,7 @@ fn is_production_client_source(path: &Path, source_root: &Path) -> bool {
 	app_client || shared_client
 }
 
-#[test]
+#[rstest]
 fn source_gate_rejects_literal_variants() {
 	// Arrange
 	let cases = [
@@ -423,7 +424,7 @@ fn source_gate_rejects_literal_variants() {
 	}
 }
 
-#[test]
+#[rstest]
 fn source_gate_allows_generated_class_tokens() {
 	// Arrange
 	let source = r##"
@@ -441,7 +442,7 @@ fn source_gate_allows_generated_class_tokens() {
 	assert!(source_style_violations(source).is_empty());
 }
 
-#[test]
+#[rstest]
 fn source_gate_limits_scanning_to_app_and_shared_client_modules() {
 	// Arrange
 	let source_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
@@ -465,7 +466,7 @@ fn source_gate_limits_scanning_to_app_and_shared_client_modules() {
 	}
 }
 
-#[test]
+#[rstest]
 fn production_client_sources_use_generated_style_tokens() {
 	// Arrange
 	let sources = production_client_sources();
@@ -494,7 +495,7 @@ fn production_client_sources_use_generated_style_tokens() {
 	);
 }
 
-#[test]
+#[rstest]
 fn generated_component_stylesheet_is_the_only_document_style_runtime() {
 	// Arrange
 	let document = INDEX_HTML.to_ascii_lowercase();
@@ -521,7 +522,7 @@ fn generated_component_stylesheet_is_the_only_document_style_runtime() {
 	);
 }
 
-#[test]
+#[rstest]
 fn shared_imperative_dom_paths_do_not_embed_utility_class_literals() {
 	// Arrange
 	let utility_class_literals = [
@@ -557,7 +558,7 @@ fn shared_imperative_dom_paths_do_not_embed_utility_class_literals() {
 	}
 }
 
-#[test]
+#[rstest]
 fn auth_pages_and_components_use_typed_style_tokens() {
 	// Arrange + Act + Assert
 	for (source_name, source) in AUTH_PRODUCTION_SOURCES {
@@ -568,7 +569,7 @@ fn auth_pages_and_components_use_typed_style_tokens() {
 	}
 }
 
-#[test]
+#[rstest]
 fn auth_account_grid_retains_the_desktop_two_column_rule() {
 	// Arrange + Act
 	let has_desktop_breakpoint = AUTH_STYLE_SOURCE.contains("@media (min-width: 1024px)");
@@ -586,7 +587,7 @@ fn auth_account_grid_retains_the_desktop_two_column_rule() {
 	);
 }
 
-#[test]
+#[rstest]
 fn auth_actions_share_one_spacing_token() {
 	// Arrange + Act
 	let has_shared_spacing =
@@ -605,7 +606,7 @@ fn auth_actions_share_one_spacing_token() {
 	);
 }
 
-#[test]
+#[rstest]
 fn dashboard_shell_uses_typed_shared_and_dashboard_style_tokens() {
 	// Arrange
 	let dashboard_sources = [DASHBOARD_CLIENT_SOURCE, DASHBOARD_LAYOUT_SOURCE];
@@ -623,7 +624,7 @@ fn dashboard_shell_uses_typed_shared_and_dashboard_style_tokens() {
 	);
 }
 
-#[test]
+#[rstest]
 fn dashboard_overview_panels_preserve_the_desktop_asymmetric_ratio() {
 	// Arrange + Act
 	let has_desktop_ratio = DASHBOARD_STYLE_SOURCE
@@ -636,7 +637,7 @@ fn dashboard_overview_panels_preserve_the_desktop_asymmetric_ratio() {
 	);
 }
 
-#[test]
+#[rstest]
 fn clusters_page_uses_typed_shared_and_cluster_style_tokens() {
 	// Arrange
 	let cluster_sources = [CLUSTERS_LIST_SOURCE];
