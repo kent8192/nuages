@@ -3,6 +3,7 @@
 use reinhardt::pages::component::Page;
 use reinhardt::pages::page;
 
+use crate::apps::deployments::client::style::STYLES;
 use crate::apps::deployments::server_fn::{
 	PreviewSummary, ProjectPreviewSummary, ProjectSourceKind,
 };
@@ -20,13 +21,13 @@ pub fn render_project_identity(summary: &ProjectPreviewSummary) -> Page {
 	};
 	page!({
 		div {
-			class: "min-w-0 space-y-1",
+			class: STYLES.preview_identity(),
 			div {
-				class: "truncate font-semibold text-ink-950",
+				class: STYLES.preview_name(),
 				{ display_name }
 			}
 			div {
-				class: "truncate text-xs font-medium text-ink-600",
+				class: STYLES.preview_meta(),
 				{ secondary }
 			}
 		}
@@ -39,7 +40,7 @@ pub fn render_preview_list(summary: &ProjectPreviewSummary) -> Page {
 		let error = error.clone();
 		return page!({
 			div {
-				class: "mt-2 text-xs font-medium text-amber-700",
+				class: STYLES.preview_error(),
 				{ error }
 			}
 		});
@@ -47,7 +48,7 @@ pub fn render_preview_list(summary: &ProjectPreviewSummary) -> Page {
 	if summary.previews.is_empty() {
 		return page!({
 			div {
-				class: "mt-2 text-xs font-medium text-cloud-500",
+				class: STYLES.preview_empty(),
 				"No active previews"
 			}
 		});
@@ -55,7 +56,7 @@ pub fn render_preview_list(summary: &ProjectPreviewSummary) -> Page {
 	let previews = summary.previews.clone();
 	page!({
 		ul {
-			class: "mt-2 space-y-1 text-xs",
+			class: STYLES.preview_list(),
 			{ previews
 			.iter()
 			.map(self::render_preview_item)
@@ -72,16 +73,16 @@ fn render_preview_item(preview: &PreviewSummary) -> Page {
 			let url = url.clone();
 			page!({
 				li {
-					class: "flex flex-wrap items-center gap-x-2 gap-y-1",
+					class: STYLES.preview_item(),
 					a {
-						class: "font-semibold text-control-700 underline underline-offset-2 hover:text-control-900",
+						class: STYLES.preview_link(),
 						href: url,
 						target: "_blank",
 						rel: "noreferrer",
 						{ label }
 					}
 					span {
-						class: "text-cloud-500",
+						class: STYLES.preview_meta(),
 						{ meta }
 					}
 				}
@@ -89,13 +90,13 @@ fn render_preview_item(preview: &PreviewSummary) -> Page {
 		}
 		None => page!({
 			li {
-				class: "flex flex-wrap items-center gap-x-2 gap-y-1",
+				class: STYLES.preview_item(),
 				span {
-					class: "font-semibold text-ink-950",
+					class: STYLES.preview_name(),
 					{ label }
 				}
 				span {
-					class: "text-cloud-500",
+					class: STYLES.preview_meta(),
 					{ meta }
 				}
 			}

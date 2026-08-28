@@ -20,6 +20,7 @@ use crate::apps::deployments::client::components::log_viewer::log_viewer_contain
 use crate::apps::deployments::client::components::preview_list::{
 	render_preview_list, render_project_identity,
 };
+use crate::apps::deployments::client::style::STYLES;
 use crate::apps::deployments::server_fn::{
 	CreateDeploymentFormRequest, CreateDeploymentFormRequestClientForm,
 	CreateDeploymentFormRequestClientFormField, DeploymentInfo, ProjectPreviewSummary,
@@ -38,7 +39,7 @@ use crate::apps::github::server_fn::list_github_project_previews_for_current_org
 use crate::shared::client::components::entity_select::{EntitySelectOption, entity_select};
 use crate::shared::client::components::status_badge;
 use crate::shared::client::routes::route_href;
-use crate::shared::client::style::STYLES;
+use crate::shared::client::style::STYLES as SHARED_STYLES;
 #[cfg(wasm)]
 use crate::shared::client::ws::track_subscriptions;
 use crate::shared::client::ws::{subscribe_app_logs, unsubscribe_logs};
@@ -61,7 +62,7 @@ fn alert(error: Signal<Option<String>>) -> Page {
 			.map(|message| {
 				page!({
 					div {
-						class: "rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700",
+						class: STYLES.alert() + STYLES.alert_error(),
 						{ message }
 					}
 				})
@@ -77,7 +78,7 @@ fn success_alert(message: Signal<Option<String>>) -> Page {
 			.map(|message| {
 				page!({
 					div {
-						class: "rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-800",
+						class: STYLES.alert() + STYLES.alert_success(),
 						{ message }
 					}
 				})
@@ -98,7 +99,7 @@ where
 				let message = error.message().to_owned();
 				page!({
 					p {
-						class: "mt-1 text-xs font-medium text-red-700",
+						class: STYLES.field_error(),
 						{ message }
 					}
 				})
@@ -264,7 +265,7 @@ fn render_create_deployment_form(view: CreateDeploymentFormView) -> Page {
 		let submit_status = if is_submitting {
 			page!({
 				p {
-					class: "mt-2 text-xs text-ink-600",
+					class: STYLES.form_status(),
 					"Submitting..."
 				}
 			})
@@ -275,19 +276,19 @@ fn render_create_deployment_form(view: CreateDeploymentFormView) -> Page {
 			{ success_view }
 			{ error_view }
 			form {
-				class: "rc-form-grid mt-3",
+				class: SHARED_STYLES.form_grid() + STYLES.form_margin(),
 				@submit: submit,
 				div {
-					class: "rc-field",
+					class: SHARED_STYLES.field(),
 					label {
 						span {
-							class: "rc-label",
+							class: SHARED_STYLES.label(),
 							"Project name"
 						}
 						input {
 							id: "create-deployment-project-name",
 							aria_label: "Project name",
-							class: "rc-input",
+							class: SHARED_STYLES.input(),
 							type: "text",
 							maxlength: 63,
 							placeholder: "web",
@@ -297,16 +298,16 @@ fn render_create_deployment_form(view: CreateDeploymentFormView) -> Page {
 					{ project_name_error }
 				}
 				div {
-					class: "rc-field",
+					class: SHARED_STYLES.field(),
 					label {
 						span {
-							class: "rc-label",
+							class: SHARED_STYLES.label(),
 							"Cluster"
 						}
 						input {
 							id: "create-deployment-cluster-id",
 							aria_label: "Cluster",
-							class: "rc-input",
+							class: SHARED_STYLES.input(),
 							type: "text",
 							readonly: true,
 							bind: cluster_id,
@@ -315,16 +316,16 @@ fn render_create_deployment_form(view: CreateDeploymentFormView) -> Page {
 					{ cluster_error }
 				}
 				div {
-					class: "rc-field",
+					class: SHARED_STYLES.field(),
 					label {
 						span {
-							class: "rc-label",
+							class: SHARED_STYLES.label(),
 							"Image"
 						}
 						input {
 							id: "create-deployment-image",
 							aria_label: "Image",
-							class: "rc-input",
+							class: SHARED_STYLES.input(),
 							type: "text",
 							maxlength: 512,
 							placeholder: "ghcr.io/example/web:latest",
@@ -334,18 +335,18 @@ fn render_create_deployment_form(view: CreateDeploymentFormView) -> Page {
 					{ image_error }
 				}
 				div {
-					class: "rc-field md:col-span-2",
+					class: SHARED_STYLES.field(),
 					label {
 						id: "create-deployment-project-yaml-label",
 						span {
-							class: "rc-label",
+							class: SHARED_STYLES.label(),
 							"Project YAML"
 						}
 					}
 					textarea {
 						id: "create-deployment-project-yaml",
 						aria_labelledby: "create-deployment-project-yaml-label",
-						class: "rc-input rc-textarea",
+						class: SHARED_STYLES.input() + SHARED_STYLES.textarea(),
 						maxlength: 65535,
 						bind: project_yaml,
 					}
@@ -353,7 +354,7 @@ fn render_create_deployment_form(view: CreateDeploymentFormView) -> Page {
 				}
 				button {
 					type: "submit",
-					class: "btn-primary min-h-11 w-full md:w-auto md:justify-self-start",
+					class: SHARED_STYLES.button_primary() + STYLES.form_submit() + STYLES.form_submit_create(),
 					disabled: is_submitting,
 					"Create deployment"
 				}
@@ -406,7 +407,7 @@ fn render_update_deployment_form(view: UpdateDeploymentFormView) -> Page {
 		let dirty_notice = if state.is_dirty.get() {
 			page!({
 				p {
-					class: "mt-2 text-xs text-amber-700",
+					class: STYLES.dirty_notice(),
 					"Unsaved changes"
 				}
 			})
@@ -416,7 +417,7 @@ fn render_update_deployment_form(view: UpdateDeploymentFormView) -> Page {
 		let submit_status = if is_submitting {
 			page!({
 				p {
-					class: "mt-2 text-xs text-ink-600",
+					class: STYLES.form_status(),
 					"Updating..."
 				}
 			})
@@ -427,19 +428,19 @@ fn render_update_deployment_form(view: UpdateDeploymentFormView) -> Page {
 			{ success_view }
 			{ error_view }
 			form {
-				class: "rc-form-stack mt-3",
+				class: SHARED_STYLES.form_stack() + STYLES.form_margin(),
 				@submit: submit,
 				div {
-					class: "rc-field",
+					class: SHARED_STYLES.field(),
 					label {
 						span {
-							class: "rc-label",
+							class: SHARED_STYLES.label(),
 							"Project name"
 						}
 						input {
 							id: "update-deployment-project-name",
 							aria_label: "Project name",
-							class: "rc-input",
+							class: SHARED_STYLES.input(),
 							type: "text",
 							maxlength: 63,
 							bind: project_name,
@@ -448,16 +449,16 @@ fn render_update_deployment_form(view: UpdateDeploymentFormView) -> Page {
 					{ project_name_error }
 				}
 				div {
-					class: "rc-field",
+					class: SHARED_STYLES.field(),
 					label {
 						span {
-							class: "rc-label",
+							class: SHARED_STYLES.label(),
 							"Image"
 						}
 						input {
 							id: "update-deployment-image",
 							aria_label: "Image",
-							class: "rc-input",
+							class: SHARED_STYLES.input(),
 							type: "text",
 							maxlength: 512,
 							bind: image,
@@ -466,16 +467,16 @@ fn render_update_deployment_form(view: UpdateDeploymentFormView) -> Page {
 					{ image_error }
 				}
 				div {
-					class: "rc-field",
+					class: SHARED_STYLES.field(),
 					label {
 						span {
-							class: "rc-label",
+							class: SHARED_STYLES.label(),
 							"Status"
 						}
 						input {
 							id: "update-deployment-status",
 							aria_label: "Status",
-							class: "rc-input",
+							class: SHARED_STYLES.input(),
 							type: "text",
 							maxlength: 50,
 							bind: status,
@@ -485,7 +486,7 @@ fn render_update_deployment_form(view: UpdateDeploymentFormView) -> Page {
 				}
 				button {
 					type: "submit",
-					class: "btn-dark min-h-11 w-full",
+					class: SHARED_STYLES.button_dark() + STYLES.form_submit(),
 					disabled: is_submitting,
 					"Update deployment"
 				}
@@ -527,7 +528,7 @@ fn render_update_deployment_status_form(view: UpdateDeploymentStatusFormView) ->
 		let submit_status = if is_submitting {
 			page!({
 				p {
-					class: "mt-2 text-xs text-ink-600",
+					class: STYLES.form_status(),
 					"Updating..."
 				}
 			})
@@ -538,19 +539,19 @@ fn render_update_deployment_status_form(view: UpdateDeploymentStatusFormView) ->
 			{ success_view }
 			{ error_view }
 			form {
-				class: "rc-form-stack mt-3",
+				class: SHARED_STYLES.form_stack() + STYLES.form_margin(),
 				@submit: submit,
 				div {
-					class: "rc-field",
+					class: SHARED_STYLES.field(),
 					label {
 						span {
-							class: "rc-label",
+							class: SHARED_STYLES.label(),
 							"Status"
 						}
 						input {
 							id: "update-deployment-status-only",
 							aria_label: "Status",
-							class: "rc-input",
+							class: SHARED_STYLES.input(),
 							type: "text",
 							maxlength: 50,
 							placeholder: "running",
@@ -561,7 +562,7 @@ fn render_update_deployment_status_form(view: UpdateDeploymentStatusFormView) ->
 				}
 				button {
 					type: "submit",
-					class: "btn-warning min-h-11 w-full",
+					class: SHARED_STYLES.button_warning() + STYLES.form_submit(),
 					disabled: is_submitting,
 					"Set status"
 				}
@@ -596,9 +597,9 @@ fn render_delete_deployment_action(view: DeleteDeploymentActionView) -> Page {
 			{ success_view }
 			{ error_view }
 			div {
-				class: "rc-form-stack mt-3",
+				class: SHARED_STYLES.form_stack() + STYLES.form_margin(),
 				label {
-					class: "flex items-start gap-2 text-sm text-ink-700",
+					class: STYLES.delete_confirmation(),
 					input {
 						id: "confirm-deployment-delete",
 						type: "checkbox",
@@ -608,7 +609,7 @@ fn render_delete_deployment_action(view: DeleteDeploymentActionView) -> Page {
 				}
 				button {
 					type: "button",
-					class: "btn-danger min-h-11 w-full",
+					class: SHARED_STYLES.button_danger() + STYLES.form_submit(),
 					disabled: !is_confirmed || is_pending,
 					@click: delete,
 					"Delete deployment"
@@ -616,7 +617,7 @@ fn render_delete_deployment_action(view: DeleteDeploymentActionView) -> Page {
 					if is_pending {
 						page!( {
 							p {
-								class: "text-xs text-ink-600",
+								class: STYLES.form_status(),
 								"Deleting..."
 							}
 						})
@@ -645,7 +646,7 @@ fn query_refetch_notice(
 		);
 		return page!({
 			div {
-				class: "border-b border-amber-100 bg-amber-50 px-4 py-2 text-xs font-medium text-amber-700",
+				class: STYLES.refetch_notice() + STYLES.refetch_warning(),
 				{ message }
 			}
 		});
@@ -653,7 +654,7 @@ fn query_refetch_notice(
 	if is_fetching {
 		return page!({
 			div {
-				class: "border-b border-cloud-100 bg-cloud-50 px-4 py-2 text-xs font-medium text-cloud-600",
+				class: STYLES.refetch_notice() + STYLES.refetch_pending(),
 				"Refreshing " { label }"..."
 			}
 		});
@@ -728,11 +729,11 @@ fn render_deployment_project_cell(
 	page!({
 		div {
 			div {
-				class: "font-semibold text-ink-950",
+				class: STYLES.project_name(),
 				{ project_name }
 			}
 			div {
-				class: "mt-2 text-xs font-medium text-cloud-500",
+				class: STYLES.project_empty(),
 				"No active previews"
 			}
 		}
@@ -743,10 +744,7 @@ fn render_deployment_status_badge(status: &str) -> Page {
 	let (color, label) = status_badge::badge_style(&self::state_from_status(status));
 	page!({
 		span {
-			class: format!(
-				"{} inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold {color}",
-				STYLES.status_badge().as_str(),
-			),
+			class: format!("{} {color}", SHARED_STYLES.status_badge().as_str()),
 			{ label }
 		}
 	})
@@ -756,6 +754,7 @@ fn render_deployment_status_badge(status: &str) -> Page {
 mod tests {
 	use super::render_deployment_status_badge;
 	use crate::shared::client::style::STYLES;
+	use crate::shared::client::style::STYLES as SHARED_STYLES;
 
 	#[test]
 	fn deployment_status_badge_composes_shared_base_and_state_tokens() {
@@ -766,8 +765,8 @@ mod tests {
 		assert_eq!(
 			html,
 			format!(
-				"<span class=\"{} inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold {}\">Running</span>",
-				STYLES.status_badge().as_str(),
+				"<span class=\"{} {}\">Running</span>",
+				SHARED_STYLES.status_badge().as_str(),
 				STYLES.status_running().as_str(),
 			)
 		);
@@ -783,25 +782,26 @@ fn render_deployment_inventory_row(
 	let status_cell = render_deployment_status_badge(&deployment.status);
 	page!({
 		tr {
+			class: STYLES.inventory_row(),
 			data_deployment_id: deployment.id.to_string(),
 			td {
-				class: "px-4 py-2 font-mono text-xs text-ink-600",
+				class: SHARED_STYLES.table_cell() + STYLES.inventory_id(),
 				{ deployment.id.to_string() }
 			}
 			td {
-				class: "px-4 py-2",
+				class: SHARED_STYLES.table_cell(),
 				{ project_cell }
 			}
 			td {
-				class: "px-4 py-2 font-mono text-xs text-ink-600",
+				class: SHARED_STYLES.table_cell() + STYLES.inventory_id(),
 				{ deployment.cluster_id.to_string() }
 			}
 			td {
-				class: "px-4 py-2",
+				class: SHARED_STYLES.table_cell(),
 				{ status_cell }
 			}
 			td {
-				class: "max-w-xs truncate px-4 py-2 text-ink-600",
+				class: SHARED_STYLES.table_cell() + STYLES.inventory_image(),
 				{ deployment.image }
 			}
 		}
@@ -815,7 +815,7 @@ fn render_deployment_inventory_table(
 	if items.is_empty() {
 		return page!({
 			div {
-				class: "rc-empty",
+				class: SHARED_STYLES.empty(),
 				"No deployments created."
 			}
 		});
@@ -825,7 +825,7 @@ fn render_deployment_inventory_table(
 		QueryStatus::Idle => (
 			page!({
 				div {
-					class: "border-b border-cloud-100 px-4 py-2 text-xs font-medium text-cloud-500",
+					class: STYLES.refetch_notice(),
 					"Preview status is not available during server rendering."
 				}
 			}),
@@ -834,7 +834,7 @@ fn render_deployment_inventory_table(
 		QueryStatus::Pending => (
 			page!({
 				div {
-					class: "border-b border-cloud-100 px-4 py-2 text-xs font-medium text-cloud-500",
+					class: STYLES.refetch_notice(),
 					"Loading previews..."
 				}
 			}),
@@ -848,7 +848,7 @@ fn render_deployment_inventory_table(
 			(
 				page!({
 					div {
-						class: "border-b border-amber-100 bg-amber-50 px-4 py-2 text-xs font-medium text-amber-700",
+						class: STYLES.refetch_notice() + STYLES.refetch_warning(),
 						{ message }
 					}
 				}),
@@ -881,36 +881,36 @@ fn render_deployment_inventory_table(
 	page!({
 		{ preview_banner }
 		div {
-			class: "overflow-x-auto",
+			class: STYLES.inventory_scroll(),
 			table {
-				class: "rc-table",
+				class: SHARED_STYLES.table(),
 				thead {
-					class: "bg-cloud-50",
+					class: STYLES.inventory_head(),
 					tr {
 						th {
-							class: "rc-th",
+							class: SHARED_STYLES.table_header(),
 							"ID"
 						}
 						th {
-							class: "rc-th",
+							class: SHARED_STYLES.table_header(),
 							"Project"
 						}
 						th {
-							class: "rc-th",
+							class: SHARED_STYLES.table_header(),
 							"Cluster"
 						}
 						th {
-							class: "rc-th",
+							class: SHARED_STYLES.table_header(),
 							"Status"
 						}
 						th {
-							class: "rc-th",
+							class: SHARED_STYLES.table_header(),
 							"Image"
 						}
 					}
 				}
 				tbody {
-					class: "divide-y divide-cloud-100 bg-white",
+					class: STYLES.inventory_body(),
 					{ rows }
 				}
 			}
@@ -1164,47 +1164,47 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 
 	page!({
 		div {
-			class: "rc-shell",
+			class: SHARED_STYLES.shell(),
 			div {
-				class: "space-y-0",
+				class: SHARED_STYLES.stack(),
 				div {
-					class: "rc-topline",
+					class: SHARED_STYLES.topline(),
 					div {
 						p {
-							class: "rc-kicker",
+							class: SHARED_STYLES.kicker(),
 							"Release surface"
 						}
 						h1 {
-							class: "rc-title",
+							class: SHARED_STYLES.title(),
 							"Deployments"
 						}
 						p {
-							class: "rc-muted mt-1",
+							class: SHARED_STYLES.muted(),
 							"Applications deployed through Reinhardt Cloud."
 						}
 					}
 				}
 				div {
-					class: "grid gap-6 lg:grid-cols-[1fr_320px]",
+					class: STYLES.page_layout(),
 					div {
-						class: "space-y-6",
+						class: STYLES.content_stack(),
 						section {
-							class: "rc-panel",
+							class: SHARED_STYLES.panel(),
 								div {
-									class: "rc-panel-head",
+									class: SHARED_STYLES.panel_head(),
 									"Deployment Inventory"
 								} {
 									let snapshot = props.deployments_for_inventory.snapshot();
 									match snapshot.status {
 										QueryStatus::Idle => page!({
 											div {
-												class: "rc-empty",
+													class: SHARED_STYLES.empty(),
 												"Deployments are not available during server rendering."
 											}
 										}),
 										QueryStatus::Pending => page!({
 											div {
-												class: "rc-empty",
+													class: SHARED_STYLES.empty(),
 												"Loading deployments..."
 											}
 										}),
@@ -1215,7 +1215,7 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 											);
 											page!({
 											div {
-												class: "px-4 py-8 text-sm font-medium text-red-700",
+											class: STYLES.query_error(),
 												{ message }
 											}
 											})
@@ -1241,9 +1241,9 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 								}
 						}
 						section {
-							class: "rc-panel-pad",
+							class: SHARED_STYLES.panel_pad(),
 							h2 {
-								class: "mb-3 text-sm font-semibold text-ink-950",
+								class: STYLES.section_title(),
 								"Create Deployment"
 								}
 								{
@@ -1269,14 +1269,14 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 											})
 										}
 										QueryStatus::Idle => page!({
-											p {
-												class: "mb-3 text-xs text-cloud-500",
+												p {
+													class: SHARED_STYLES.muted(),
 												"Clusters are not available during server rendering."
 											}
 										}),
 										QueryStatus::Pending => page!({
-											p {
-												class: "mb-3 text-xs text-ink-600",
+												p {
+													class: SHARED_STYLES.muted(),
 												"Loading clusters..."
 											}
 										}),
@@ -1287,7 +1287,7 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 											);
 											page!({
 											p {
-												class: "mb-3 text-xs font-medium text-red-700",
+												class: STYLES.field_error(),
 												{ message }
 											}
 											})
@@ -1297,9 +1297,9 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 							{ props.create_view.clone() }
 						}
 						section {
-							class: "rc-panel-pad",
+							class: SHARED_STYLES.panel_pad(),
 									h2 {
-										class: "mb-3 text-sm font-semibold text-ink-950",
+											class: STYLES.section_title(),
 										"Live Logs"
 									} {
 										let snapshot = props.deployments_for_logs.snapshot();
@@ -1312,13 +1312,13 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 										),
 											QueryStatus::Idle => page!({
 												p {
-													class: "mb-3 text-xs text-cloud-500",
+													class: SHARED_STYLES.muted(),
 													"Deployments are not available during server rendering."
 												}
 											}),
 											QueryStatus::Pending => page!({
 												p {
-													class: "mb-3 text-xs text-ink-600",
+													class: SHARED_STYLES.muted(),
 													"Loading deployments..."
 												}
 											}),
@@ -1329,7 +1329,7 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 												);
 												page!({
 												p {
-													class: "mb-3 text-xs font-medium text-red-700",
+													class: STYLES.field_error(),
 													{ message }
 												}
 												})
@@ -1337,17 +1337,17 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 										}
 									}
 							div {
-								class: "mt-3",
+								class: STYLES.section_gap(),
 								{ props.logs.clone() }
 							}
 						}
 					}
 					aside {
-						class: "rc-stack",
+						class: SHARED_STYLES.stack(),
 						section {
-							class: "rc-panel-pad",
-								h2 {
-									class: "mb-3 text-sm font-semibold text-ink-950",
+							class: SHARED_STYLES.panel_pad(),
+										h2 {
+											class: STYLES.section_title(),
 									"Deployment Operations"
 									}
 								{
@@ -1369,13 +1369,13 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 										}
 						QueryStatus::Idle => page!({
 											p {
-												class: "mb-3 text-xs text-cloud-500",
+														class: SHARED_STYLES.muted(),
 												"Deployments are not available during server rendering."
 											}
 						}),
 						QueryStatus::Pending => page!({
 											p {
-												class: "mb-3 text-xs text-ink-600",
+														class: SHARED_STYLES.muted(),
 												"Loading deployments..."
 											}
 						}),
@@ -1386,7 +1386,7 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 							);
 							page!({
 											p {
-												class: "mb-3 text-xs font-medium text-red-700",
+														class: STYLES.field_error(),
 												{ message }
 											}
 							})
@@ -1395,7 +1395,7 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 								}
 							{ props.edit_view.clone() }
 							div {
-								class: "my-4 border-t border-cloud-200"
+							class: STYLES.divider()
 								}
 								{
 									let snapshot = props.deployments_for_status.snapshot();
@@ -1403,13 +1403,13 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 									QueryStatus::Success => self::entity_select("Deployment", "Select deployment", self::deployment_select_options(&snapshot.data.unwrap_or_default()), props.status_deployment_id, |_value| {}, ),
 						QueryStatus::Idle => page!({
 											p {
-												class: "mb-3 text-xs text-cloud-500",
+														class: SHARED_STYLES.muted(),
 												"Deployments are not available during server rendering."
 											}
 						}),
 						QueryStatus::Pending => page!({
 											p {
-												class: "mb-3 text-xs text-ink-600",
+														class: SHARED_STYLES.muted(),
 												"Loading deployments..."
 											}
 						}),
@@ -1420,7 +1420,7 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 							);
 							page!({
 											p {
-												class: "mb-3 text-xs font-medium text-red-700",
+														class: STYLES.field_error(),
 												{ message }
 											}
 							})
@@ -1429,21 +1429,21 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 								}
 							{ props.status_view.clone() }
 							div {
-								class: "my-4 border-t border-cloud-200"
+							class: STYLES.divider()
 								}
 								{
 									let snapshot = props.deployments_for_delete.snapshot();
 									match snapshot.status {
 									QueryStatus::Success => self::entity_select("Deployment", "Select deployment", self::deployment_select_options(&snapshot.data.unwrap_or_default()), props.delete_deployment_id, |_value| {}, ),
 						QueryStatus::Idle => page!({
-											p {
-												class: "mb-3 text-xs text-cloud-500",
+												p {
+													class: SHARED_STYLES.muted(),
 												"Deployments are not available during server rendering."
 											}
 						}),
 						QueryStatus::Pending => page!({
-											p {
-												class: "mb-3 text-xs text-ink-600",
+												p {
+													class: SHARED_STYLES.muted(),
 												"Loading deployments..."
 											}
 						}),
@@ -1454,7 +1454,7 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 							);
 							page!({
 											p {
-												class: "mb-3 text-xs font-medium text-red-700",
+												class: STYLES.field_error(),
 												{ message }
 											}
 							})

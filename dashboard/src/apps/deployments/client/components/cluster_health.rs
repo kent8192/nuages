@@ -14,6 +14,8 @@ use reinhardt::pages::page;
 use crate::shared::ws_messages::ClusterHealthPayload;
 
 #[cfg(wasm)]
+use crate::apps::deployments::client::style::STYLES;
+#[cfg(wasm)]
 use crate::shared::client::components::toast::html_escape;
 
 /// DOM id of the cluster health container.
@@ -26,7 +28,7 @@ pub fn cluster_health_container() -> Page {
 	page!({
 		div {
 			id: "cluster-health",
-			class: "cluster-health grid gap-2",
+			class: STYLES.cluster_health(),
 		}
 	})
 }
@@ -61,17 +63,8 @@ pub fn update(payload: ClusterHealthPayload) {
 		}
 	};
 
-	let status_class = if payload.healthy {
-		"bg-green-50 border-green-200"
-	} else {
-		"bg-red-50 border-red-200"
-	};
-	let _ = row.set_attribute(
-		"class",
-		&format!(
-			"cluster-health-row border rounded-md p-2 text-sm flex items-center gap-3 {status_class}"
-		),
-	);
+	let row_class = cluster_health_row_class(payload.healthy);
+	let _ = row.set_attribute("class", row_class.as_str());
 
 	let cluster = html_escape(&payload.cluster_name);
 	let agent = html_escape(&payload.agent_id);
@@ -86,8 +79,20 @@ pub fn update(payload: ClusterHealthPayload) {
 	let pods = payload.pod_count;
 
 	row.set_inner_html(&format!(
-		r#"<strong class="text-ink-950">{cluster}</strong><span class="text-ink-600">agent={agent}</span><span>status={status}</span><span>cpu={cpu}%</span><span>mem={mem}%</span><span>pods={pods}</span><span class="text-ink-400 ml-auto">{ts}</span>"#
+		r#"<strong class="{}">{cluster}</strong><span class="{}">agent={agent}</span><span>status={status}</span><span>cpu={cpu}%</span><span>mem={mem}%</span><span>pods={pods}</span><span class="{}">{ts}</span>"#,
+		STYLES.health_name().as_str(),
+		STYLES.health_muted().as_str(),
+		STYLES.health_timestamp().as_str(),
 	));
+}
+
+#[cfg(wasm)]
+fn cluster_health_row_class(healthy: bool) -> reinhardt::pages::style::ClassList {
+	if healthy {
+		STYLES.cluster_health_row() + STYLES.cluster_health_healthy()
+	} else {
+		STYLES.cluster_health_row() + STYLES.cluster_health_unhealthy()
+	}
 }
 
 /// Compute a stable DOM id for a (cluster, agent) pair.

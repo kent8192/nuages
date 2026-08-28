@@ -12,6 +12,7 @@ use reinhardt::pages::page;
 #[cfg(wasm)]
 use reinhardt::pages::prelude::{QueryHandle, QueryOptions, QueryStatus, Signal, use_query};
 
+use crate::apps::deployments::client::style::STYLES;
 #[cfg(wasm)]
 use crate::apps::deployments::server_fn::{DeploymentLogInfo, deployment_logs_for_current_org};
 #[cfg(wasm)]
@@ -48,9 +49,9 @@ fn log_viewer_empty() -> Page {
 	page!({
 		pre {
 			id: "log-viewer",
-			class: "log-viewer max-h-96 overflow-auto rounded-md bg-ink-950 p-3 font-mono text-xs text-gray-100 whitespace-pre-wrap",
+			class: STYLES.log_viewer(),
 			span {
-				class: "block text-gray-400",
+				class: STYLES.log_line() + STYLES.log_line_muted(),
 				"Select a deployment to load logs."
 			}
 		}
@@ -65,13 +66,13 @@ fn render_log_history(
 	let content = match snapshot.status {
 		QueryStatus::Idle => page!({
 			span {
-				class: "block text-gray-400",
+				class: STYLES.log_line() + STYLES.log_line_muted(),
 				"Log history is not available during server rendering."
 			}
 		}),
 		QueryStatus::Pending => page!({
 			span {
-				class: "block text-gray-400",
+				class: STYLES.log_line() + STYLES.log_line_muted(),
 				"Loading logs..."
 			}
 		}),
@@ -82,7 +83,7 @@ fn render_log_history(
 				.unwrap_or_else(|| "Unable to load logs.".to_owned());
 			page!({
 				span {
-					class: "block text-red-300",
+					class: STYLES.log_line() + STYLES.log_line_error(),
 					{ message }
 				}
 			})
@@ -92,7 +93,7 @@ fn render_log_history(
 			let history = if lines.is_empty() {
 				page!({
 					span {
-						class: "block text-gray-400",
+						class: STYLES.log_line() + STYLES.log_line_muted(),
 						"No log entries."
 					}
 				})
@@ -110,14 +111,14 @@ fn render_log_history(
 				let message = error.user_message().to_owned();
 				page!({
 					span {
-						class: "block text-amber-300",
+						class: STYLES.log_line() + STYLES.log_line_warning(),
 						{ format!("Showing cached logs: {message}") }
 					}
 				})
 			} else if snapshot.is_fetching {
 				page!({
 					span {
-						class: "block text-gray-400",
+						class: STYLES.log_line() + STYLES.log_line_muted(),
 						"Refreshing logs..."
 					}
 				})
@@ -136,7 +137,7 @@ fn render_log_history(
 	page!({
 		pre {
 			id: "log-viewer",
-			class: "log-viewer max-h-96 overflow-auto rounded-md bg-ink-950 p-3 font-mono text-xs text-gray-100 whitespace-pre-wrap",
+			class: STYLES.log_viewer(),
 			{ content }
 		}
 	})
@@ -151,13 +152,12 @@ pub fn log_viewer_container(
 
 #[cfg(wasm)]
 fn render_history_line(line: &DeploymentLogInfo) -> Page {
-	let level_class = level_class(&line.level);
 	let timestamp = line.timestamp.clone();
 	let level = line.level.clone();
 	let message = line.message.clone();
 	page!({
 		span {
-			class: format!("log-line {level_class} block"),
+			class: log_line_class(&line.level),
 			{ format!("[{timestamp}] [{level}] {message}") }
 		}
 	})
@@ -198,8 +198,8 @@ fn append_line(timestamp: &str, source: &str, level: &str, message: &str) {
 	let Ok(line) = document.create_element("span") else {
 		return;
 	};
-	let level_class = level_class(level);
-	let _ = line.set_attribute("class", &format!("log-line {level_class} block"));
+	let class = log_line_class(level);
+	let _ = line.set_attribute("class", class.as_str());
 
 	let ts = html_escape(timestamp);
 	let src = html_escape(source);
@@ -222,13 +222,18 @@ fn append_line(timestamp: &str, source: &str, level: &str, message: &str) {
 }
 
 /// Map a lowercase log level string to a CSS color class.
-pub fn level_class(level: &str) -> &'static str {
+pub fn level_class(level: &str) -> reinhardt::pages::prelude::ClassToken {
 	match level {
-		"error" => "text-red-400",
-		"warn" => "text-amber-300",
-		"debug" => "text-gray-400",
-		_ => "text-gray-100",
+		"error" => STYLES.log_line_error(),
+		"warn" => STYLES.log_line_warning(),
+		"debug" => STYLES.log_line_muted(),
+		_ => STYLES.log_line_default(),
 	}
+}
+
+#[cfg(any(wasm, test))]
+fn log_line_class(level: &str) -> reinhardt::pages::style::ClassList {
+	STYLES.log_line() + level_class(level)
 }
 
 // Non-WASM stubs so server-side callers (and unit tests) can compile.
@@ -245,18 +250,31 @@ mod tests {
 	use super::*;
 	use rstest::rstest;
 
-	#[rstest]
-	#[case("error", "text-red-400")]
-	#[case("warn", "text-amber-300")]
-	#[case("debug", "text-gray-400")]
-	#[case("info", "text-gray-100")]
-	#[case("unknown", "text-gray-100")]
-	fn test_level_class_maps_known_levels(#[case] level: &str, #[case] expected: &str) {
+	#[test]
+	fn test_level_class_maps_known_levels() {
 		// Act
-		let class = level_class(level);
+		let error = level_class("error");
+		let warning = level_class("warn");
+		let muted = level_class("debug");
+		let default = level_class("unknown");
 
 		// Assert
-		assert_eq!(class, expected);
+		assert_eq!(error.as_str(), STYLES.log_line_error().as_str());
+		assert_eq!(warning.as_str(), STYLES.log_line_warning().as_str());
+		assert_eq!(muted.as_str(), STYLES.log_line_muted().as_str());
+		assert_eq!(default.as_str(), STYLES.log_line_default().as_str());
+	}
+
+	#[test]
+	fn test_log_line_class_composes_generated_base_and_level_tokens() {
+		// Act
+		let class = log_line_class("error");
+
+		// Assert
+		assert_eq!(
+			class.as_str(),
+			(STYLES.log_line() + STYLES.log_line_error()).as_str()
+		);
 	}
 
 	#[rstest]
