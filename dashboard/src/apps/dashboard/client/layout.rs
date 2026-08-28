@@ -3,14 +3,44 @@
 use reinhardt::pages::component;
 use reinhardt::pages::event::ClickEvent;
 use reinhardt::pages::page;
-use reinhardt::pages::prelude::{Action, ClassToken, Outlet, Page, use_action};
+use reinhardt::pages::prelude::{
+	Action, ClassToken, Outlet, Page, QueryOptions, QuerySnapshot, QueryStatus, use_action,
+	use_query,
+};
 use reinhardt::pages::server_fn::ServerFnError;
 
 #[cfg(wasm)]
 use crate::apps::auth::server_fn::logout::logout;
+use crate::apps::auth::server_fn::me::me;
 use crate::apps::dashboard::client::style::STYLES;
+use crate::shared::UserInfo;
 use crate::shared::client::routes::route_href;
 use crate::shared::client::style::STYLES as SHARED_STYLES;
+
+#[derive(Debug, PartialEq)]
+enum DashboardGate {
+	Waiting,
+	Authenticated,
+	LoginRequired,
+	Failed(String),
+}
+
+fn dashboard_gate(snapshot: QuerySnapshot<UserInfo, ServerFnError>) -> DashboardGate {
+	if let Some(error) = snapshot.error.or(snapshot.refetch_error) {
+		return match error.status() {
+			Some(401 | 403) => DashboardGate::LoginRequired,
+			_ => DashboardGate::Failed(error.user_message().to_string()),
+		};
+	}
+
+	match snapshot.status {
+		QueryStatus::Idle | QueryStatus::Pending => DashboardGate::Waiting,
+		QueryStatus::Success if snapshot.data.is_some() => DashboardGate::Authenticated,
+		QueryStatus::Success | QueryStatus::Error => {
+			DashboardGate::Failed("Dashboard session could not be verified.".to_string())
+		}
+	}
+}
 
 fn nav_item_class(is_active: bool) -> ClassToken {
 	if is_active {
@@ -72,124 +102,156 @@ pub fn dashboard_layout(outlet: Outlet) -> Page {
 	let clusters_href = route_href("clusters:list", "/clusters");
 	let deployments_href = route_href("deployments:list", "/deployments");
 	let github_href = route_href("github:repositories", "/github");
+	let session = use_query(me::query(), QueryOptions::new().enabled(cfg!(wasm)));
 
 	page!({
 		{
-			let current_path = current_path
-				.map(|path| path.get())
-				.unwrap_or_else(|| "/".to_string());
-			let outlet = outlet.clone();
-			let account_href = account_href.clone();
-			let home_href = home_href.clone();
-			let clusters_href = clusters_href.clone();
-			let deployments_href = deployments_href.clone();
-			let github_href = github_href.clone();
-			let logout_action = logout_action;
-			page!({
-				div {
-					class: SHARED_STYLES.app() + STYLES.dashboard_app(),
-					header {
-						class: STYLES.dashboard_header(),
+			let gate = match self::dashboard_gate(session.snapshot()) {
+				DashboardGate::LoginRequired if replace_document(&login_href).is_err() => {
+					DashboardGate::Failed("Unable to redirect to sign in.".to_string())
+				}
+				gate => gate,
+			};
+			match gate {
+				DashboardGate::Waiting | DashboardGate::LoginRequired => Page::Empty,
+				DashboardGate::Failed(message) => page!({
+					main {
+						class: SHARED_STYLES.app(),
+						role: "alert",
 						div {
-							class: STYLES.header_brand(),
-							span {
-								class: STYLES.brand_mark(),
-								"RC"
-							}
-							div {
-								span {
-									class: STYLES.brand_name(),
-									"Reinhardt Cloud"
+							class: SHARED_STYLES.shell(),
+							section {
+								class: SHARED_STYLES.panel_pad(),
+								h1 {
+									class: SHARED_STYLES.title(),
+									"Dashboard unavailable"
 								}
-								span {
-									class: STYLES.brand_subtitle(),
-									"Deploy control"
+								p {
+									class: SHARED_STYLES.muted(),
+									{ message }
 								}
-							}
-						}
-						div {
-							class: STYLES.header_actions(),
-							span {
-								class: STYLES.header_health(),
-								"Healthy"
-							}
-							a {
-								href: account_href.clone(),
-								class: SHARED_STYLES.link() + STYLES.header_action(),
-								"Account"
-							}
-							button {
-								type: "button",
-								class: SHARED_STYLES.link() + STYLES.header_action(),
-								@click: move |event: ClickEvent| {
-									event.prevent_default();
-									logout_action.dispatch(());
-								},
-								"Logout"
 							}
 						}
 					}
-					div {
-						class: STYLES.dashboard_body(),
-						nav {
-							class: STYLES.sidebar(),
-							div {
-								class: STYLES.organization(),
-								p {
-									class: STYLES.organization_label(),
-									"Organization"
-								}
-								p {
-									class: STYLES.organization_name(),
-									"current workspace"
-								}
-							}
-							ul {
-								class: STYLES.navigation_list(),
-								li {
-									a {
-										href: home_href,
-										class: self::nav_item_class(self::route_is_active(&current_path, &home_href)),
-										"Overview"
+				}),
+				DashboardGate::Authenticated => {
+					let current_path = current_path
+						.map(|path| path.get())
+						.unwrap_or_else(|| "/".to_string());
+					let outlet = outlet.clone();
+					let account_href = account_href.clone();
+					let home_href = home_href.clone();
+					let clusters_href = clusters_href.clone();
+					let deployments_href = deployments_href.clone();
+					let github_href = github_href.clone();
+					let logout_action = logout_action;
+					page!({
+						div {
+							class: SHARED_STYLES.app() + STYLES.dashboard_app(),
+							header {
+								class: STYLES.dashboard_header(),
+								div {
+									class: STYLES.header_brand(),
+									span {
+										class: STYLES.brand_mark(),
+										"RC"
+									}
+									div {
+										span {
+											class: STYLES.brand_name(),
+											"Reinhardt Cloud"
+										}
+										span {
+											class: STYLES.brand_subtitle(),
+											"Deploy control"
+										}
 									}
 								}
-								li {
-									a {
-										href: clusters_href,
-										class: self::nav_item_class(self::route_is_active(&current_path, &clusters_href)),
-										"Clusters"
+								div {
+									class: STYLES.header_actions(),
+									span {
+										class: STYLES.header_health(),
+										"Healthy"
 									}
-								}
-								li {
 									a {
-										href: deployments_href,
-										class: self::nav_item_class(self::route_is_active(&current_path, &deployments_href)),
-										"Deployments"
-									}
-								}
-								li {
-									a {
-										href: github_href,
-										class: self::nav_item_class(self::route_is_active(&current_path, &github_href)),
-										"GitHub"
-									}
-								}
-								li {
-									a {
-										href: account_href,
-										class: self::nav_item_class(self::route_is_active(&current_path, &account_href)),
+										href: account_href.clone(),
+										class: SHARED_STYLES.link() + STYLES.header_action(),
 										"Account"
 									}
+									button {
+										type: "button",
+										class: SHARED_STYLES.link() + STYLES.header_action(),
+										@click: move |event: ClickEvent| {
+											event.prevent_default();
+											logout_action.dispatch(());
+										},
+										"Logout"
+									}
+								}
+							}
+							div {
+								class: STYLES.dashboard_body(),
+								nav {
+									class: STYLES.sidebar(),
+									div {
+										class: STYLES.organization(),
+										p {
+											class: STYLES.organization_label(),
+											"Organization"
+										}
+										p {
+											class: STYLES.organization_name(),
+											"current workspace"
+										}
+									}
+									ul {
+										class: STYLES.navigation_list(),
+										li {
+											a {
+												href: home_href,
+												class: self::nav_item_class(self::route_is_active(&current_path, &home_href)),
+												"Overview"
+											}
+										}
+										li {
+											a {
+												href: clusters_href,
+												class: self::nav_item_class(self::route_is_active(&current_path, &clusters_href)),
+												"Clusters"
+											}
+										}
+										li {
+											a {
+												href: deployments_href,
+												class: self::nav_item_class(self::route_is_active(&current_path, &deployments_href)),
+												"Deployments"
+											}
+										}
+										li {
+											a {
+												href: github_href,
+												class: self::nav_item_class(self::route_is_active(&current_path, &github_href)),
+												"GitHub"
+											}
+										}
+										li {
+											a {
+												href: account_href,
+												class: self::nav_item_class(self::route_is_active(&current_path, &account_href)),
+												"Account"
+											}
+										}
+									}
+								}
+								main {
+									class: STYLES.dashboard_main(),
+									{ outlet }
 								}
 							}
 						}
-						main {
-							class: STYLES.dashboard_main(),
-							{ outlet }
-						}
-					}
+					})
 				}
-			})
+			}
 		}
 	})
 }
@@ -326,7 +388,103 @@ pub fn dashboard_shell() -> Page {
 
 #[cfg(test)]
 mod tests {
+	use reinhardt::pages::prelude::{QuerySnapshot, QueryStatus};
+	use reinhardt::pages::server_fn::ServerFnError;
 	use rstest::rstest;
+
+	use crate::shared::UserInfo;
+
+	use super::DashboardGate;
+
+	fn session_snapshot(
+		status: QueryStatus,
+		has_user: bool,
+		error: Option<ServerFnError>,
+		refetch_error: Option<ServerFnError>,
+	) -> QuerySnapshot<UserInfo, ServerFnError> {
+		QuerySnapshot {
+			status,
+			data: has_user.then(|| UserInfo {
+				id: "user-1".to_string(),
+				username: "alice".to_string(),
+				email: "alice@example.com".to_string(),
+			}),
+			error,
+			refetch_error,
+			is_fetching: status == QueryStatus::Pending,
+			is_stale: false,
+		}
+	}
+
+	#[rstest]
+	#[case::disabled(QueryStatus::Idle, false, None, None, DashboardGate::Waiting)]
+	#[case::initial_fetch(QueryStatus::Pending, false, None, None, DashboardGate::Waiting)]
+	#[case::authenticated(QueryStatus::Success, true, None, None, DashboardGate::Authenticated)]
+	#[case::missing_success_data(
+		QueryStatus::Success,
+		false,
+		None,
+		None,
+		DashboardGate::Failed("Dashboard session could not be verified.".to_string())
+	)]
+	#[case::unauthorized(
+		QueryStatus::Error,
+		false,
+		Some(ServerFnError::auth(401, "Session expired")),
+		None,
+		DashboardGate::LoginRequired
+	)]
+	#[case::forbidden(
+		QueryStatus::Error,
+		false,
+		Some(ServerFnError::auth(403, "Account disabled")),
+		None,
+		DashboardGate::LoginRequired
+	)]
+	#[case::expired_refetch(
+		QueryStatus::Success,
+		true,
+		None,
+		Some(ServerFnError::auth(401, "Session expired")),
+		DashboardGate::LoginRequired
+	)]
+	#[case::service_failure(
+		QueryStatus::Error,
+		false,
+		Some(ServerFnError::server(503, "Dashboard is temporarily unavailable.")),
+		None,
+		DashboardGate::Failed("Dashboard is temporarily unavailable.".to_string())
+	)]
+	#[case::refetch_failure(
+		QueryStatus::Success,
+		true,
+		None,
+		Some(ServerFnError::server(503, "Dashboard is temporarily unavailable.")),
+		DashboardGate::Failed("Dashboard is temporarily unavailable.".to_string())
+	)]
+	#[case::missing_error(
+		QueryStatus::Error,
+		false,
+		None,
+		None,
+		DashboardGate::Failed("Dashboard session could not be verified.".to_string())
+	)]
+	fn session_gate_selects_protected_layout_state(
+		#[case] status: QueryStatus,
+		#[case] has_user: bool,
+		#[case] error: Option<ServerFnError>,
+		#[case] refetch_error: Option<ServerFnError>,
+		#[case] expected: DashboardGate,
+	) {
+		// Arrange
+		let snapshot = session_snapshot(status, has_user, error, refetch_error);
+
+		// Act
+		let actual = super::dashboard_gate(snapshot);
+
+		// Assert
+		assert_eq!(actual, expected);
+	}
 
 	#[rstest]
 	#[case::overview("/", "/", true)]
@@ -384,7 +542,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn nav_item_class_selects_the_exact_generated_token() {
 		// Arrange + Act
 		let active_class = super::nav_item_class(true);
