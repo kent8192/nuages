@@ -14,6 +14,18 @@ pub mod render_tests {
 	const GITHUB_LIST_SOURCE: &str = include_str!("../client/pages/list.rs");
 	const GITHUB_STYLE_SOURCE: &str = include_str!("../client/style.rs");
 
+	fn assert_occurs_once(rendered: &str, expected: &str) {
+		assert_eq!(rendered.match_indices(expected).count(), 1, "{expected}");
+	}
+
+	fn source_block<'a>(source: &'a str, start: &str, end: &str) -> &'a str {
+		let (_, after_start) = source.split_once(start).expect("style rule should exist");
+		let (block, _) = after_start
+			.split_once(end)
+			.expect("next style rule should exist");
+		block
+	}
+
 	#[rstest]
 	fn render_imported_project_card_uses_typed_card_and_preview_structure() {
 		// Arrange
@@ -30,20 +42,63 @@ pub mod render_tests {
 		let html = render_imported_project_card(&summary).render_to_string();
 
 		// Assert
-		assert_eq!(
-			html,
-			format!(
-				"<article class=\"{}\"><div class=\"{}\"><div class=\"{}\">kent8192/reinhardt-cloud</div><div class=\"{}\">Project: reinhardt-cloud / production: main</div></div><ul class=\"{}\"><li class=\"{}\"><a class=\"{}\" href=\"https://preview.example.com/pr-42\" target=\"_blank\" rel=\"noreferrer\">#42 reinhardt-cloud-pr-42</a><span class=\"{}\">running / 1 ready</span></li></ul></article>",
-				GITHUB_STYLES.project_card().as_str(),
-				DEPLOYMENT_STYLES.preview_identity().as_str(),
-				DEPLOYMENT_STYLES.preview_name().as_str(),
-				DEPLOYMENT_STYLES.preview_meta().as_str(),
-				DEPLOYMENT_STYLES.preview_list().as_str(),
-				DEPLOYMENT_STYLES.preview_item().as_str(),
-				DEPLOYMENT_STYLES.preview_link().as_str(),
-				DEPLOYMENT_STYLES.preview_meta().as_str(),
-			)
+		assert_occurs_once(
+			&html,
+			&format!(
+				"<article class=\"{}\">",
+				GITHUB_STYLES.project_card().as_str()
+			),
 		);
+		assert_occurs_once(
+			&html,
+			&format!(
+				"<div class=\"{}\">",
+				DEPLOYMENT_STYLES.preview_identity().as_str()
+			),
+		);
+		assert_occurs_once(
+			&html,
+			&format!(
+				"<div class=\"{}\">kent8192/reinhardt-cloud</div>",
+				DEPLOYMENT_STYLES.preview_name().as_str(),
+			),
+		);
+		assert_occurs_once(
+			&html,
+			&format!(
+				"<div class=\"{}\">Project: reinhardt-cloud / production: main</div>",
+				DEPLOYMENT_STYLES.preview_meta().as_str(),
+			),
+		);
+		assert_occurs_once(
+			&html,
+			&format!(
+				"<ul class=\"{}\">",
+				DEPLOYMENT_STYLES.preview_list().as_str()
+			),
+		);
+		assert_occurs_once(
+			&html,
+			&format!(
+				"<li class=\"{}\">",
+				DEPLOYMENT_STYLES.preview_item().as_str()
+			),
+		);
+		assert_occurs_once(
+			&html,
+			&format!(
+				"<a class=\"{}\" href=\"https://preview.example.com/pr-42\" target=\"_blank\" rel=\"noreferrer\">#42 reinhardt-cloud-pr-42</a>",
+				DEPLOYMENT_STYLES.preview_link().as_str(),
+			),
+		);
+		assert_occurs_once(
+			&html,
+			&format!(
+				"<span class=\"{}\">running / 1 ready</span>",
+				DEPLOYMENT_STYLES.preview_meta().as_str(),
+			),
+		);
+		assert_eq!(html.match_indices("</article>").count(), 1);
 	}
 
 	#[rstest]
@@ -55,30 +110,63 @@ pub mod render_tests {
 		let html = render_imported_project_card(&summary).render_to_string();
 
 		// Assert
-		assert_eq!(
-			html,
-			format!(
-				"<article class=\"{}\"><div class=\"{}\"><div class=\"{}\">kent8192/reinhardt-cloud</div><div class=\"{}\">Project: reinhardt-cloud / production: main</div></div><div class=\"{}\">No active previews</div></article>",
-				GITHUB_STYLES.project_card().as_str(),
-				DEPLOYMENT_STYLES.preview_identity().as_str(),
-				DEPLOYMENT_STYLES.preview_name().as_str(),
-				DEPLOYMENT_STYLES.preview_meta().as_str(),
-				DEPLOYMENT_STYLES.preview_empty().as_str(),
-			)
+		assert_occurs_once(
+			&html,
+			&format!(
+				"<article class=\"{}\">",
+				GITHUB_STYLES.project_card().as_str()
+			),
 		);
+		assert_occurs_once(
+			&html,
+			&format!(
+				"<div class=\"{}\">kent8192/reinhardt-cloud</div>",
+				DEPLOYMENT_STYLES.preview_name().as_str(),
+			),
+		);
+		assert_occurs_once(
+			&html,
+			&format!(
+				"<div class=\"{}\">Project: reinhardt-cloud / production: main</div>",
+				DEPLOYMENT_STYLES.preview_meta().as_str(),
+			),
+		);
+		assert_occurs_once(
+			&html,
+			&format!(
+				"<div class=\"{}\">No active previews</div>",
+				DEPLOYMENT_STYLES.preview_empty().as_str(),
+			),
+		);
+		assert_eq!(html.match_indices("</article>").count(), 1);
 	}
 
 	#[rstest]
 	fn github_page_uses_typed_responsive_and_query_state_tokens() {
 		// Assert
-		assert!(!GITHUB_LIST_SOURCE.contains("class: \""));
-		assert!(GITHUB_LIST_SOURCE.contains("STYLES.page_layout()"));
-		assert!(GITHUB_STYLE_SOURCE.contains(
-			".page_layout {\n\t\tdisplay: grid;\n\t\tgap: 1.5rem;\n\t\t@media (min-width: 1024px) {\n\t\t\tgrid-template-columns: (1fr, 22.5rem);"
-		));
-		assert!(GITHUB_STYLE_SOURCE.contains(
-			".onboarding_action {\n\t\tdisplay: flex;\n\t\tflex-direction: column;\n\t\tgap: 0.75rem;\n\t\t@media (min-width: 640px) {\n\t\t\tflex-direction: row;\n\t\t\talign-items: center;\n\t\t\tjustify-content: space-between;"
-		));
+		assert_eq!(GITHUB_LIST_SOURCE.match_indices("class: \"").count(), 0);
+		assert_eq!(
+			GITHUB_LIST_SOURCE
+				.match_indices("class: STYLES.page_layout(),")
+				.count(),
+			1
+		);
+		assert_eq!(
+			source_block(
+				GITHUB_STYLE_SOURCE,
+				".page_layout {",
+				"\n\t.content_stack {"
+			),
+			"\n\t\tdisplay: grid;\n\t\tgap: 1.5rem;\n\t\t@media (min-width: 1024px) {\n\t\t\tgrid-template-columns: (1fr, 22.5rem);\n\t\t}\n\t}"
+		);
+		assert_eq!(
+			source_block(
+				GITHUB_STYLE_SOURCE,
+				".onboarding_action {",
+				"\n\t.onboarding_button {"
+			),
+			"\n\t\tdisplay: flex;\n\t\tflex-direction: column;\n\t\tgap: 0.75rem;\n\t\t@media (min-width: 640px) {\n\t\t\tflex-direction: row;\n\t\t\talign-items: center;\n\t\t\tjustify-content: space-between;\n\t\t}\n\t}"
+		);
 	}
 
 	fn github_summary(previews: Vec<PreviewSummary>) -> ProjectPreviewSummary {
