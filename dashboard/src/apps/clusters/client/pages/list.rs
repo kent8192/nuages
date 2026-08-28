@@ -444,7 +444,7 @@ fn render_rotate_cluster_token_action(view: RotateClusterTokenActionView) -> Pag
 			let has_selected_cluster = !cluster_id.get().trim().is_empty();
 			let token_confirmation = action
 				.result()
-				.map(|token| self::render_cluster_token_confirmation(token, dismiss.clone()));
+				.map(|token| self::render_cluster_token_confirmation(token, dismiss));
 			let token_confirmation = token_confirmation.unwrap_or(Page::Empty);
 			page!({
 				{ error_view }
@@ -708,9 +708,7 @@ pub fn clusters_list_page() -> Page {
 					UseFormAsyncSubmitOutcome::AlreadyPending
 					| UseFormAsyncSubmitOutcome::ValidationFailed => None,
 				})
-				.map(|token| {
-					self::render_cluster_token_confirmation(token, create_dismiss.clone())
-				});
+				.map(|token| self::render_cluster_token_confirmation(token, create_dismiss));
 			let token_confirmation = token_confirmation.unwrap_or(Page::Empty);
 			page!({
 				div {

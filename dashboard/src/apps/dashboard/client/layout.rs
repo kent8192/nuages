@@ -223,9 +223,7 @@ pub fn dashboard_shell() -> Page {
 			div {
 				class: STYLES.overview_metrics(),
 				div {
-					class: SHARED_STYLES.panel_pad()
-						+ STYLES.metric_card()
-						+ STYLES.metric_clusters(),
+					class: SHARED_STYLES.panel_pad() + STYLES.metric_card() + STYLES.metric_clusters(),
 					h3 {
 						class: STYLES.metric_label(),
 						"Clusters"
@@ -240,9 +238,7 @@ pub fn dashboard_shell() -> Page {
 					}
 				}
 				div {
-					class: SHARED_STYLES.panel_pad()
-						+ STYLES.metric_card()
-						+ STYLES.metric_deployments(),
+					class: SHARED_STYLES.panel_pad() + STYLES.metric_card() + STYLES.metric_deployments(),
 					h3 {
 						class: STYLES.metric_label(),
 						"Deployments"
@@ -257,9 +253,7 @@ pub fn dashboard_shell() -> Page {
 					}
 				}
 				div {
-					class: SHARED_STYLES.panel_pad()
-						+ STYLES.metric_card()
-						+ STYLES.metric_status(),
+					class: SHARED_STYLES.panel_pad() + STYLES.metric_card() + STYLES.metric_status(),
 					h3 {
 						class: STYLES.metric_label(),
 						"System Status"
