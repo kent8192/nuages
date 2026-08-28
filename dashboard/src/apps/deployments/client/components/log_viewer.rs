@@ -1,8 +1,8 @@
 //! Real-time log viewer component.
 //!
 //! The viewer renders a `<pre id="log-viewer">` container. Incoming
-//! `AppLog` and `BuildLog` WebSocket messages append `<span class="log-line">`
-//! children. The DOM buffer is capped at [`MAX_LINES`] entries to bound
+//! `AppLog` and `BuildLog` WebSocket messages append `<span>` children with the
+//! generated log-line token. The DOM buffer is capped at [`MAX_LINES`] entries to bound
 //! memory — older lines are removed from the front when the cap is reached.
 
 #[cfg(wasm)]

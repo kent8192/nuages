@@ -6,17 +6,19 @@
 //! uses a stable DOM id so subsequent updates replace the existing row
 //! rather than duplicating it.
 
+#[cfg(any(wasm, test))]
+use std::fmt::Display;
+
 #[cfg(wasm)]
 use reinhardt::pages::component::Page;
 #[cfg(wasm)]
 use reinhardt::pages::page;
 
-use crate::shared::ws_messages::ClusterHealthPayload;
-
-#[cfg(wasm)]
+#[cfg(any(wasm, test))]
 use crate::apps::deployments::client::style::STYLES;
 #[cfg(wasm)]
 use crate::shared::client::components::toast::html_escape;
+use crate::shared::ws_messages::ClusterHealthPayload;
 
 /// DOM id of the cluster health container.
 #[cfg(wasm)]
@@ -78,21 +80,36 @@ pub fn update(payload: ClusterHealthPayload) {
 	let mem = format!("{:.1}", payload.memory_usage_percent);
 	let pods = payload.pod_count;
 
-	row.set_inner_html(&format!(
-		r#"<strong class="{}">{cluster}</strong><span class="{}">agent={agent}</span><span>status={status}</span><span>cpu={cpu}%</span><span>mem={mem}%</span><span>pods={pods}</span><span class="{}">{ts}</span>"#,
-		STYLES.health_name().as_str(),
-		STYLES.health_muted().as_str(),
-		STYLES.health_timestamp().as_str(),
+	row.set_inner_html(&cluster_health_row_markup(
+		&cluster, &agent, &ts, status, &cpu, &mem, pods,
 	));
 }
 
-#[cfg(wasm)]
+#[cfg(any(wasm, test))]
 fn cluster_health_row_class(healthy: bool) -> reinhardt::pages::style::ClassList {
 	if healthy {
 		STYLES.cluster_health_row() + STYLES.cluster_health_healthy()
 	} else {
 		STYLES.cluster_health_row() + STYLES.cluster_health_unhealthy()
 	}
+}
+
+#[cfg(any(wasm, test))]
+fn cluster_health_row_markup(
+	cluster: &str,
+	agent: &str,
+	timestamp: &str,
+	status: &str,
+	cpu: &str,
+	memory: &str,
+	pods: impl Display,
+) -> String {
+	format!(
+		r#"<strong class="{}">{cluster}</strong><span class="{}">agent={agent}</span><span>status={status}</span><span>cpu={cpu}%</span><span>mem={memory}%</span><span>pods={pods}</span><span class="{}">{timestamp}</span>"#,
+		STYLES.health_name().as_str(),
+		STYLES.health_muted().as_str(),
+		STYLES.health_timestamp().as_str(),
+	)
 }
 
 /// Compute a stable DOM id for a (cluster, agent) pair.
@@ -114,6 +131,7 @@ pub fn update(_payload: ClusterHealthPayload) {}
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::apps::deployments::client::style::STYLES;
 	use rstest::rstest;
 
 	#[rstest]
@@ -150,5 +168,40 @@ mod tests {
 		let id = row_id("ns/cluster", "region/agent");
 
 		assert_eq!(id, "cluster-health-ns-cluster-region-agent");
+	}
+
+	#[test]
+	fn cluster_health_rows_use_generated_state_and_markup_tokens() {
+		// Act
+		let healthy = cluster_health_row_class(true);
+		let unhealthy = cluster_health_row_class(false);
+		let markup = cluster_health_row_markup(
+			"prod",
+			"agent-a",
+			"2026-08-28T00:00:00Z",
+			"healthy",
+			"1.0",
+			"2.0",
+			3,
+		);
+
+		// Assert
+		assert_eq!(
+			healthy.as_str(),
+			(STYLES.cluster_health_row() + STYLES.cluster_health_healthy()).as_str()
+		);
+		assert_eq!(
+			unhealthy.as_str(),
+			(STYLES.cluster_health_row() + STYLES.cluster_health_unhealthy()).as_str()
+		);
+		assert_eq!(
+			markup,
+			format!(
+				"<strong class=\"{}\">prod</strong><span class=\"{}\">agent=agent-a</span><span>status=healthy</span><span>cpu=1.0%</span><span>mem=2.0%</span><span>pods=3</span><span class=\"{}\">2026-08-28T00:00:00Z</span>",
+				STYLES.health_name().as_str(),
+				STYLES.health_muted().as_str(),
+				STYLES.health_timestamp().as_str(),
+			)
+		);
 	}
 }

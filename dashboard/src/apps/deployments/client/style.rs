@@ -80,6 +80,11 @@ pub static STYLES: DeploymentsStyles = style! {
 		background-color: #eff6ff;
 		color: #1e3a8a;
 	}
+	.refetch_neutral {
+		border-bottom-color: #dbeafe;
+		background-color: #eff6ff;
+		color: #4f7796;
+	}
 	.query_error {
 		padding: 2rem;
 		padding-left: 1rem;
@@ -96,6 +101,19 @@ pub static STYLES: DeploymentsStyles = style! {
 	}
 	.section_gap {
 		margin-top: 0.75rem;
+	}
+	.intro {
+		margin-top: 0.25rem;
+	}
+	.operation_state {
+		margin-bottom: 0.75rem;
+		font-size: 0.75rem;
+	}
+	.operation_error {
+		margin-bottom: 0.75rem;
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: #b91c1c;
 	}
 	.page_layout {
 		display: grid;

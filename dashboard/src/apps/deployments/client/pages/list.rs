@@ -741,19 +741,40 @@ fn render_deployment_project_cell(
 }
 
 fn render_deployment_status_badge(status: &str) -> Page {
-	let (color, label) = status_badge::badge_style(&self::state_from_status(status));
+	let (_, label) = status_badge::badge_style(&self::state_from_status(status));
 	page!({
 		span {
-			class: format!("{} {color}", SHARED_STYLES.status_badge().as_str()),
+			class: SHARED_STYLES.status_badge() + deployment_status_token(status),
 			{ label }
+		}
+	})
+}
+
+fn deployment_status_token(status: &str) -> reinhardt::pages::prelude::ClassToken {
+	match state_from_status(status) {
+		DeploymentState::Running => SHARED_STYLES.status_running(),
+		DeploymentState::Deploying => SHARED_STYLES.status_deploying(),
+		DeploymentState::Degraded => SHARED_STYLES.status_degraded(),
+		DeploymentState::Failed => SHARED_STYLES.status_failed(),
+		DeploymentState::Stopped => SHARED_STYLES.status_stopped(),
+	}
+}
+
+fn render_neutral_refetch_notice(message: &'static str) -> Page {
+	page!({
+		div {
+			class: STYLES.refetch_notice() + STYLES.refetch_neutral(),
+			{ message }
 		}
 	})
 }
 
 #[cfg(test)]
 mod tests {
-	use super::render_deployment_status_badge;
-	use crate::shared::client::style::STYLES;
+	use super::{
+		deployment_status_token, render_deployment_status_badge, render_neutral_refetch_notice,
+	};
+	use crate::apps::deployments::client::style::STYLES;
 	use crate::shared::client::style::STYLES as SHARED_STYLES;
 
 	#[test]
@@ -767,7 +788,31 @@ mod tests {
 			format!(
 				"<span class=\"{} {}\">Running</span>",
 				SHARED_STYLES.status_badge().as_str(),
-				STYLES.status_running().as_str(),
+				SHARED_STYLES.status_running().as_str(),
+			)
+		);
+	}
+
+	#[test]
+	fn deployment_status_token_remains_typed_until_badge_composition() {
+		// Act
+		let token = deployment_status_token("running");
+
+		// Assert
+		assert_eq!(token.as_str(), SHARED_STYLES.status_running().as_str());
+	}
+
+	#[test]
+	fn neutral_preview_notice_renders_composed_generated_tokens() {
+		// Act
+		let html = render_neutral_refetch_notice("Loading previews...").render_to_string();
+
+		// Assert
+		assert_eq!(
+			html,
+			format!(
+				"<div class=\"{}\">Loading previews...</div>",
+				(STYLES.refetch_notice() + STYLES.refetch_neutral()).as_str(),
 			)
 		);
 	}
@@ -823,21 +868,13 @@ fn render_deployment_inventory_table(
 
 	let (preview_banner, summaries) = match preview_state.status {
 		QueryStatus::Idle => (
-			page!({
-				div {
-					class: STYLES.refetch_notice(),
-					"Preview status is not available during server rendering."
-				}
-			}),
+			render_neutral_refetch_notice(
+				"Preview status is not available during server rendering.",
+			),
 			Vec::new(),
 		),
 		QueryStatus::Pending => (
-			page!({
-				div {
-					class: STYLES.refetch_notice(),
-					"Loading previews..."
-				}
-			}),
+			render_neutral_refetch_notice("Loading previews..."),
 			Vec::new(),
 		),
 		QueryStatus::Error => {
@@ -1165,8 +1202,6 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 	page!({
 		div {
 			class: SHARED_STYLES.shell(),
-			div {
-				class: SHARED_STYLES.stack(),
 				div {
 					class: SHARED_STYLES.topline(),
 					div {
@@ -1179,7 +1214,7 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 							"Deployments"
 						}
 						p {
-							class: SHARED_STYLES.muted(),
+							class: SHARED_STYLES.muted() + STYLES.intro(),
 							"Applications deployed through Reinhardt Cloud."
 						}
 					}
@@ -1270,13 +1305,13 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 										}
 										QueryStatus::Idle => page!({
 												p {
-													class: SHARED_STYLES.muted(),
+													class: SHARED_STYLES.muted() + STYLES.operation_state(),
 												"Clusters are not available during server rendering."
 											}
 										}),
 										QueryStatus::Pending => page!({
 												p {
-													class: SHARED_STYLES.muted(),
+													class: SHARED_STYLES.muted() + STYLES.operation_state(),
 												"Loading clusters..."
 											}
 										}),
@@ -1287,7 +1322,7 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 											);
 											page!({
 											p {
-												class: STYLES.field_error(),
+												class: STYLES.operation_error(),
 												{ message }
 											}
 											})
@@ -1312,13 +1347,13 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 										),
 											QueryStatus::Idle => page!({
 												p {
-													class: SHARED_STYLES.muted(),
+													class: SHARED_STYLES.muted() + STYLES.operation_state(),
 													"Deployments are not available during server rendering."
 												}
 											}),
 											QueryStatus::Pending => page!({
 												p {
-													class: SHARED_STYLES.muted(),
+													class: SHARED_STYLES.muted() + STYLES.operation_state(),
 													"Loading deployments..."
 												}
 											}),
@@ -1329,7 +1364,7 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 												);
 												page!({
 												p {
-													class: STYLES.field_error(),
+													class: STYLES.operation_error(),
 													{ message }
 												}
 												})
@@ -1369,13 +1404,13 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 										}
 						QueryStatus::Idle => page!({
 											p {
-														class: SHARED_STYLES.muted(),
+														class: SHARED_STYLES.muted() + STYLES.operation_state(),
 												"Deployments are not available during server rendering."
 											}
 						}),
 						QueryStatus::Pending => page!({
 											p {
-														class: SHARED_STYLES.muted(),
+														class: SHARED_STYLES.muted() + STYLES.operation_state(),
 												"Loading deployments..."
 											}
 						}),
@@ -1386,7 +1421,7 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 							);
 							page!({
 											p {
-														class: STYLES.field_error(),
+														class: STYLES.operation_error(),
 												{ message }
 											}
 							})
@@ -1403,13 +1438,13 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 									QueryStatus::Success => self::entity_select("Deployment", "Select deployment", self::deployment_select_options(&snapshot.data.unwrap_or_default()), props.status_deployment_id, |_value| {}, ),
 						QueryStatus::Idle => page!({
 											p {
-														class: SHARED_STYLES.muted(),
+														class: SHARED_STYLES.muted() + STYLES.operation_state(),
 												"Deployments are not available during server rendering."
 											}
 						}),
 						QueryStatus::Pending => page!({
 											p {
-														class: SHARED_STYLES.muted(),
+														class: SHARED_STYLES.muted() + STYLES.operation_state(),
 												"Loading deployments..."
 											}
 						}),
@@ -1420,7 +1455,7 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 							);
 							page!({
 											p {
-														class: STYLES.field_error(),
+														class: STYLES.operation_error(),
 												{ message }
 											}
 							})
@@ -1437,13 +1472,13 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 									QueryStatus::Success => self::entity_select("Deployment", "Select deployment", self::deployment_select_options(&snapshot.data.unwrap_or_default()), props.delete_deployment_id, |_value| {}, ),
 						QueryStatus::Idle => page!({
 												p {
-													class: SHARED_STYLES.muted(),
+													class: SHARED_STYLES.muted() + STYLES.operation_state(),
 												"Deployments are not available during server rendering."
 											}
 						}),
 						QueryStatus::Pending => page!({
 												p {
-													class: SHARED_STYLES.muted(),
+													class: SHARED_STYLES.muted() + STYLES.operation_state(),
 												"Loading deployments..."
 											}
 						}),
@@ -1454,7 +1489,7 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 							);
 							page!({
 											p {
-												class: STYLES.field_error(),
+													class: STYLES.operation_error(),
 												{ message }
 											}
 							})
@@ -1464,7 +1499,6 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 							{ props.delete_view.clone() }
 						}
 					}
-				}
 			}
 		}
 	})
