@@ -248,7 +248,7 @@ pub static STYLES: DashboardStyles = style! {
 		gap: 1rem;
 		margin-top: 1.5rem;
 		@media (min-width: 1024px) {
-			grid-template-columns: unchecked_fn!(repeat(2, minmax(0, 1fr)));
+			grid-template-columns: (1.2fr, 0.8fr);
 		}
 	}
 	.runbook_list {

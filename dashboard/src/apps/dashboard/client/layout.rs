@@ -367,11 +367,43 @@ mod tests {
 			.map(|fragment| fragment.split('"').next().unwrap_or_default())
 			.collect::<Vec<_>>();
 		assert_eq!(hrefs, vec!["/clusters", "/deployments", "/github"]);
-		assert!(html.contains(super::STYLES.overview_metrics().as_str()));
-		assert!(html.contains(super::STYLES.runbook_link().as_str()));
+		let metrics_classes = (super::SHARED_STYLES.panel_pad()
+			+ super::STYLES.metric_card()
+			+ super::STYLES.metric_clusters())
+		.as_str()
+		.to_owned();
+		let expected_metrics = format!(
+			"<div class=\"{}\"><div class=\"{metrics_classes}\">",
+			super::STYLES.overview_metrics().as_str()
+		);
 		assert!(
-			html.contains(super::SHARED_STYLES.panel().as_str()),
-			"runbook retains the shared panel structure"
+			html.contains(&expected_metrics),
+			"metrics grid owns the cluster metric card"
+		);
+		let expected_runbook_link = format!(
+			"<a href=\"/clusters\" class=\"{}\">Register cluster",
+			super::STYLES.runbook_link().as_str()
+		);
+		assert!(
+			html.contains(&expected_runbook_link),
+			"runbook link owns its generated token"
+		);
+	}
+
+	#[test]
+	fn nav_item_class_selects_the_exact_generated_token() {
+		// Arrange + Act
+		let active_class = super::nav_item_class(true);
+		let inactive_class = super::nav_item_class(false);
+
+		// Assert
+		assert_eq!(
+			active_class.as_str(),
+			super::STYLES.navigation_item_active().as_str()
+		);
+		assert_eq!(
+			inactive_class.as_str(),
+			super::STYLES.navigation_item().as_str()
 		);
 	}
 }

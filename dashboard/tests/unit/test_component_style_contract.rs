@@ -4,6 +4,7 @@ const INDEX_HTML: &str = include_str!("../../index.html");
 const AUTH_STYLE_SOURCE: &str = include_str!("../../src/apps/auth/client/style.rs");
 const DASHBOARD_CLIENT_SOURCE: &str = include_str!("../../src/apps/dashboard/client.rs");
 const DASHBOARD_LAYOUT_SOURCE: &str = include_str!("../../src/apps/dashboard/client/layout.rs");
+const DASHBOARD_STYLE_SOURCE: &str = include_str!("../../src/apps/dashboard/client/style.rs");
 const SHARED_IMPERATIVE_SOURCES: &[(&str, &str)] = &[
 	(
 		"entity_select",
@@ -156,5 +157,18 @@ fn dashboard_shell_uses_typed_shared_and_dashboard_style_tokens() {
 	assert!(
 		DASHBOARD_CLIENT_SOURCE.contains("pub mod style;"),
 		"dashboard client module must export its local style module"
+	);
+}
+
+#[test]
+fn dashboard_overview_panels_preserve_the_desktop_asymmetric_ratio() {
+	// Arrange + Act
+	let has_desktop_ratio = DASHBOARD_STYLE_SOURCE
+		.contains("@media (min-width: 1024px) {\n\t\t\tgrid-template-columns: (1.2fr, 0.8fr);");
+
+	// Assert
+	assert!(
+		has_desktop_ratio,
+		"desktop overview panels must retain the 1.2fr to 0.8fr ratio"
 	);
 }
