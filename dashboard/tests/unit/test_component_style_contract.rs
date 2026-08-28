@@ -81,7 +81,8 @@ fn source_style_violations(source: &str) -> Vec<&'static str> {
 
 fn has_page_class_literal(source: &str) -> bool {
 	identifier_offsets(source, "class").any(|index| {
-		let Some(remainder) = source[index + "class".len()..].strip_prefix(':') else {
+		let remainder = source[index + "class".len()..].trim_start();
+		let Some(remainder) = remainder.strip_prefix(':') else {
 			return false;
 		};
 		parse_rust_string_literal(remainder.trim_start()).is_some()
@@ -113,6 +114,9 @@ fn has_imperative_class_literal(source: &str) -> bool {
 
 fn has_raw_html_class_literal(source: &str) -> bool {
 	identifier_offsets(source, "class").any(|index| {
+		if !is_html_class_attribute(source, index) {
+			return false;
+		}
 		let remainder = source[index + "class".len()..].trim_start();
 		let Some(remainder) = remainder.strip_prefix('=') else {
 			return false;
@@ -123,6 +127,13 @@ fn has_raw_html_class_literal(source: &str) -> bool {
 		let value = value.trim();
 		!(value.starts_with('{') && value.ends_with('}'))
 	})
+}
+
+fn is_html_class_attribute(source: &str, index: usize) -> bool {
+	let before = &source[..index];
+	before
+		.rfind('<')
+		.is_some_and(|tag_start| !before[tag_start..].contains('>'))
 }
 
 fn identifier_offsets<'a>(
@@ -174,13 +185,22 @@ fn parse_rust_string_literal(source: &str) -> Option<(&str, usize)> {
 }
 
 fn parse_html_attribute_value(source: &str) -> Option<&str> {
-	let quote = source.chars().next()?;
-	if quote != '"' && quote != '\'' {
-		return None;
+	if let Some(remainder) = source.strip_prefix("\\\"") {
+		let index = remainder.find("\\\"")?;
+		return Some(&remainder[..index]);
 	}
-	let remainder = &source[quote.len_utf8()..];
-	let index = remainder.find(quote)?;
-	Some(&remainder[..index])
+
+	let quote = source.chars().next()?;
+	if quote == '"' || quote == '\'' {
+		let remainder = &source[quote.len_utf8()..];
+		let index = remainder.find(quote)?;
+		return Some(&remainder[..index]);
+	}
+
+	let end = source
+		.find(|character: char| character.is_whitespace() || character == '>')
+		.unwrap_or(source.len());
+	(end > 0).then_some(&source[..end])
 }
 
 fn production_client_sources() -> Vec<PathBuf> {
@@ -250,6 +270,11 @@ fn source_gate_rejects_literal_variants() {
 			vec!["raw page class literal"],
 		),
 		(
+			"page string with whitespace before colon",
+			"page!({ div { class : \"p-4\" } });",
+			vec!["raw page class literal"],
+		),
+		(
 			"imperative string",
 			"element.set_attribute(\"class\",\"flex\");",
 			vec!["imperative utility class literal"],
@@ -269,6 +294,16 @@ fn source_gate_rejects_literal_variants() {
 			r##"element.set_inner_html(r#"<div class='gap-4'></div>"#);"##,
 			vec!["raw HTML utility class literal"],
 		),
+		(
+			"escaped double quoted HTML",
+			"element.set_inner_html(\"<div class=\\\"gap-4\\\"></div>\");",
+			vec!["raw HTML utility class literal"],
+		),
+		(
+			"unquoted HTML",
+			r##"element.set_inner_html(r#"<div class=gap-4></div>"#);"##,
+			vec!["raw HTML utility class literal"],
+		),
 	];
 
 	// Act + Assert
@@ -282,6 +317,7 @@ fn source_gate_allows_generated_class_tokens() {
 	// Arrange
 	let source = r##"
 		page!({ div { class: STYLES.card() + STYLES.selected() } });
+		let class = STYLES.card();
 		let classes: ClassList = STYLES.card() + selected;
 		element.set_attribute("class", classes.as_str());
 		element.set_inner_html(r#"<div class="{}"></div>"#);
