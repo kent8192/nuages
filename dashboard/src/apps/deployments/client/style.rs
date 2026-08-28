@@ -109,6 +109,12 @@ pub static STYLES: DeploymentsStyles = style! {
 		margin-bottom: 0.75rem;
 		font-size: 0.75rem;
 	}
+	.operation_idle {
+		color: #4f7796;
+	}
+	.operation_pending {
+		color: #625f68;
+	}
 	.operation_error {
 		margin-bottom: 0.75rem;
 		font-size: 0.75rem;

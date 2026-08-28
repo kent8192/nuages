@@ -741,17 +741,18 @@ fn render_deployment_project_cell(
 }
 
 fn render_deployment_status_badge(status: &str) -> Page {
-	let (_, label) = status_badge::badge_style(&self::state_from_status(status));
+	let state = state_from_status(status);
+	let (_, label) = status_badge::badge_style(&state);
 	page!({
 		span {
-			class: SHARED_STYLES.status_badge() + deployment_status_token(status),
+			class: SHARED_STYLES.status_badge() + deployment_status_token(&state),
 			{ label }
 		}
 	})
 }
 
-fn deployment_status_token(status: &str) -> reinhardt::pages::prelude::ClassToken {
-	match state_from_status(status) {
+fn deployment_status_token(state: &DeploymentState) -> reinhardt::pages::prelude::ClassToken {
+	match state {
 		DeploymentState::Running => SHARED_STYLES.status_running(),
 		DeploymentState::Deploying => SHARED_STYLES.status_deploying(),
 		DeploymentState::Degraded => SHARED_STYLES.status_degraded(),
@@ -776,6 +777,7 @@ mod tests {
 	};
 	use crate::apps::deployments::client::style::STYLES;
 	use crate::shared::client::style::STYLES as SHARED_STYLES;
+	use crate::shared::ws_messages::DeploymentState;
 
 	#[test]
 	fn deployment_status_badge_composes_shared_base_and_state_tokens() {
@@ -796,10 +798,73 @@ mod tests {
 	#[test]
 	fn deployment_status_token_remains_typed_until_badge_composition() {
 		// Act
-		let token = deployment_status_token("running");
+		let token = deployment_status_token(&DeploymentState::Running);
 
 		// Assert
 		assert_eq!(token.as_str(), SHARED_STYLES.status_running().as_str());
+	}
+
+	#[test]
+	fn operation_query_states_keep_local_text_size_and_distinct_colors() {
+		// Arrange
+		let source = include_str!("list.rs");
+		let production_source = source
+			.split_once("\npub fn deployments_list_page")
+			.expect("the deployment list source has its page component")
+			.1;
+
+		// Act
+		let idle = STYLES.operation_state() + STYLES.operation_idle();
+		let pending = STYLES.operation_state() + STYLES.operation_pending();
+
+		// Assert
+		assert_eq!(
+			idle.as_str(),
+			format!(
+				"{} {}",
+				STYLES.operation_state().as_str(),
+				STYLES.operation_idle().as_str(),
+			)
+		);
+		assert_eq!(
+			pending.as_str(),
+			format!(
+				"{} {}",
+				STYLES.operation_state().as_str(),
+				STYLES.operation_pending().as_str(),
+			)
+		);
+		assert_eq!(
+			production_source
+				.matches("class: STYLES.operation_state() + STYLES.operation_idle(),")
+				.count(),
+			5
+		);
+		assert_eq!(
+			production_source
+				.matches("class: STYLES.operation_state() + STYLES.operation_pending(),")
+				.count(),
+			5
+		);
+		assert!(!production_source.contains("SHARED_STYLES.muted() + STYLES.operation_state()"));
+	}
+
+	#[test]
+	fn page_layout_token_is_used_with_desktop_columns_contract() {
+		// Arrange
+		let source = include_str!("list.rs");
+		let page_source = source
+			.split_once("\npub fn deployments_list_page")
+			.expect("the deployment list source has its page component")
+			.1;
+		let style_source = include_str!("../style.rs");
+
+		// Assert
+		assert!(!STYLES.page_layout().as_str().is_empty());
+		assert!(page_source.contains("class: STYLES.page_layout(),"));
+		assert!(style_source.contains(
+			".page_layout {\n\t\tdisplay: grid;\n\t\tgap: 1.5rem;\n\t\t@media (min-width: 1024px) {\n\t\t\tgrid-template-columns: (1fr, 20rem);\n\t\t}\n\t}"
+		));
 	}
 
 	#[test]
@@ -1305,13 +1370,13 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 										}
 										QueryStatus::Idle => page!({
 												p {
-													class: SHARED_STYLES.muted() + STYLES.operation_state(),
+													class: STYLES.operation_state() + STYLES.operation_idle(),
 												"Clusters are not available during server rendering."
 											}
 										}),
 										QueryStatus::Pending => page!({
 												p {
-													class: SHARED_STYLES.muted() + STYLES.operation_state(),
+													class: STYLES.operation_state() + STYLES.operation_pending(),
 												"Loading clusters..."
 											}
 										}),
@@ -1347,13 +1412,13 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 										),
 											QueryStatus::Idle => page!({
 												p {
-													class: SHARED_STYLES.muted() + STYLES.operation_state(),
+													class: STYLES.operation_state() + STYLES.operation_idle(),
 													"Deployments are not available during server rendering."
 												}
 											}),
 											QueryStatus::Pending => page!({
 												p {
-													class: SHARED_STYLES.muted() + STYLES.operation_state(),
+													class: STYLES.operation_state() + STYLES.operation_pending(),
 													"Loading deployments..."
 												}
 											}),
@@ -1404,13 +1469,13 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 										}
 						QueryStatus::Idle => page!({
 											p {
-														class: SHARED_STYLES.muted() + STYLES.operation_state(),
+														class: STYLES.operation_state() + STYLES.operation_idle(),
 												"Deployments are not available during server rendering."
 											}
 						}),
 						QueryStatus::Pending => page!({
 											p {
-														class: SHARED_STYLES.muted() + STYLES.operation_state(),
+														class: STYLES.operation_state() + STYLES.operation_pending(),
 												"Loading deployments..."
 											}
 						}),
@@ -1438,13 +1503,13 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 									QueryStatus::Success => self::entity_select("Deployment", "Select deployment", self::deployment_select_options(&snapshot.data.unwrap_or_default()), props.status_deployment_id, |_value| {}, ),
 						QueryStatus::Idle => page!({
 											p {
-														class: SHARED_STYLES.muted() + STYLES.operation_state(),
+														class: STYLES.operation_state() + STYLES.operation_idle(),
 												"Deployments are not available during server rendering."
 											}
 						}),
 						QueryStatus::Pending => page!({
 											p {
-														class: SHARED_STYLES.muted() + STYLES.operation_state(),
+														class: STYLES.operation_state() + STYLES.operation_pending(),
 												"Loading deployments..."
 											}
 						}),
@@ -1471,14 +1536,14 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 									match snapshot.status {
 									QueryStatus::Success => self::entity_select("Deployment", "Select deployment", self::deployment_select_options(&snapshot.data.unwrap_or_default()), props.delete_deployment_id, |_value| {}, ),
 						QueryStatus::Idle => page!({
-												p {
-													class: SHARED_STYLES.muted() + STYLES.operation_state(),
+											p {
+													class: STYLES.operation_state() + STYLES.operation_idle(),
 												"Deployments are not available during server rendering."
 											}
 						}),
 						QueryStatus::Pending => page!({
-												p {
-													class: SHARED_STYLES.muted() + STYLES.operation_state(),
+											p {
+													class: STYLES.operation_state() + STYLES.operation_pending(),
 												"Loading deployments..."
 											}
 						}),

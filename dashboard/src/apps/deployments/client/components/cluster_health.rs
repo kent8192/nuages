@@ -6,9 +6,6 @@
 //! uses a stable DOM id so subsequent updates replace the existing row
 //! rather than duplicating it.
 
-#[cfg(any(wasm, test))]
-use std::fmt::Display;
-
 #[cfg(wasm)]
 use reinhardt::pages::component::Page;
 #[cfg(wasm)]
@@ -102,7 +99,7 @@ fn cluster_health_row_markup(
 	status: &str,
 	cpu: &str,
 	memory: &str,
-	pods: impl Display,
+	pods: u32,
 ) -> String {
 	format!(
 		r#"<strong class="{}">{cluster}</strong><span class="{}">agent={agent}</span><span>status={status}</span><span>cpu={cpu}%</span><span>mem={memory}%</span><span>pods={pods}</span><span class="{}">{timestamp}</span>"#,
@@ -173,9 +170,11 @@ mod tests {
 	#[test]
 	fn cluster_health_rows_use_generated_state_and_markup_tokens() {
 		// Act
+		let render: fn(&str, &str, &str, &str, &str, &str, u32) -> String =
+			cluster_health_row_markup;
 		let healthy = cluster_health_row_class(true);
 		let unhealthy = cluster_health_row_class(false);
-		let markup = cluster_health_row_markup(
+		let markup = render(
 			"prod",
 			"agent-a",
 			"2026-08-28T00:00:00Z",
