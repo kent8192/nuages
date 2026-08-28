@@ -5,13 +5,20 @@ use reinhardt_test::{BrowserClient, BrowserConfig, browser_client};
 use rstest::rstest;
 
 const AUTHENTICATED_ROUTES: &[RouteExpectation] = &[
-	RouteExpectation::new("/", "h1", "Deployment Operations", "h3", "Clusters", "home"),
-	RouteExpectation::new("/account", "h1", "Account", "h2", "Profile", "account"),
+	RouteExpectation::new(
+		"/",
+		"h1",
+		"Deployment Operations",
+		"main h3",
+		"Clusters",
+		"home",
+	),
+	RouteExpectation::new("/account", "h1", "Account", "main h2", "Profile", "account"),
 	RouteExpectation::new(
 		"/clusters",
 		"h1",
 		"Clusters",
-		"h2",
+		"main h2",
 		"Register Cluster",
 		"clusters",
 	),
@@ -19,7 +26,7 @@ const AUTHENTICATED_ROUTES: &[RouteExpectation] = &[
 		"/deployments",
 		"h1",
 		"Deployments",
-		"h2",
+		"main h2",
 		"Create Deployment",
 		"deployments",
 	),
@@ -27,7 +34,7 @@ const AUTHENTICATED_ROUTES: &[RouteExpectation] = &[
 		"/github",
 		"h1",
 		"GitHub Repositories",
-		"h2",
+		"main h2",
 		"Import",
 		"github",
 	),
@@ -38,7 +45,7 @@ const PUBLIC_ROUTES: &[RouteExpectation] = &[
 		"/login",
 		"h2",
 		"Sign in to your account",
-		"form",
+		"label:has(input[name='username']) > span",
 		"Username",
 		"login",
 	),
@@ -46,7 +53,7 @@ const PUBLIC_ROUTES: &[RouteExpectation] = &[
 		"/register",
 		"h2",
 		"Create your account",
-		"form",
+		"label:has(input[name='email']) > span",
 		"Email",
 		"register",
 	),
@@ -243,15 +250,14 @@ async fn verify_route(
 		.text()
 		.await
 		.with_context(|| format!("failed to read content on Dashboard route {}", route.path))?;
-	assert!(
-		content.contains(route.content),
-		"Dashboard route {} must contain {:?}",
-		route.path,
-		route.content
+	assert_eq!(
+		content, route.content,
+		"unexpected content on Dashboard route {}",
+		route.path
 	);
 
 	browser
-		.wait_for("link[rel='stylesheet'][href*='components.css']")
+		.wait_for("link[rel='stylesheet'][href*='components']")
 		.await
 		.with_context(|| {
 			format!(
@@ -263,8 +269,11 @@ async fn verify_route(
 		.execute_js(
 			r#"
 			const link = Array.from(document.querySelectorAll("link[rel='stylesheet']"))
-				.find((candidate) => new URL(candidate.href, document.baseURI).pathname
-					.endsWith("/__reinhardt__/components.css"));
+				.find((candidate) => {
+					const pathname = new URL(candidate.href, document.baseURI).pathname;
+					return pathname.includes("/__reinhardt__/components")
+						&& pathname.endsWith(".css");
+				});
 			if (!link) return { pathname: null, ruleCount: 0 };
 			let ruleCount = 0;
 			try {
@@ -287,8 +296,8 @@ async fn verify_route(
 	let stylesheet_path = stylesheet["pathname"].as_str().unwrap_or_default();
 	let rule_count = stylesheet["ruleCount"].as_u64().unwrap_or_default();
 	assert!(
-		stylesheet_path.ends_with("/__reinhardt__/components.css"),
-		"Dashboard route {} must load __reinhardt__/components.css, got {:?}",
+		stylesheet_path.contains("/__reinhardt__/components") && stylesheet_path.ends_with(".css"),
+		"Dashboard route {} must load the logical or hashed components stylesheet, got {:?}",
 		route.path,
 		stylesheet_path
 	);
