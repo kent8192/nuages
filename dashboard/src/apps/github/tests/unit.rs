@@ -4,6 +4,7 @@
 pub mod render_tests {
 	use rstest::rstest;
 
+	use crate::apps::deployments::client::style::STYLES as DEPLOYMENT_STYLES;
 	use crate::apps::deployments::server_fn::{
 		PreviewSummary, ProjectPreviewSummary, ProjectSourceKind,
 	};
@@ -29,13 +30,20 @@ pub mod render_tests {
 		let html = render_imported_project_card(&summary).render_to_string();
 
 		// Assert
-		assert!(html.contains(&format!(
-			"<article class=\"{}\">",
-			GITHUB_STYLES.project_card().as_str()
-		)));
-		assert!(html.contains("kent8192/reinhardt-cloud"));
-		assert!(html.contains("#42 reinhardt-cloud-pr-42"));
-		assert!(!html.contains("rounded-md"));
+		assert_eq!(
+			html,
+			format!(
+				"<article class=\"{}\"><div class=\"{}\"><div class=\"{}\">kent8192/reinhardt-cloud</div><div class=\"{}\">Project: reinhardt-cloud / production: main</div></div><ul class=\"{}\"><li class=\"{}\"><a class=\"{}\" href=\"https://preview.example.com/pr-42\" target=\"_blank\" rel=\"noreferrer\">#42 reinhardt-cloud-pr-42</a><span class=\"{}\">running / 1 ready</span></li></ul></article>",
+				GITHUB_STYLES.project_card().as_str(),
+				DEPLOYMENT_STYLES.preview_identity().as_str(),
+				DEPLOYMENT_STYLES.preview_name().as_str(),
+				DEPLOYMENT_STYLES.preview_meta().as_str(),
+				DEPLOYMENT_STYLES.preview_list().as_str(),
+				DEPLOYMENT_STYLES.preview_item().as_str(),
+				DEPLOYMENT_STYLES.preview_link().as_str(),
+				DEPLOYMENT_STYLES.preview_meta().as_str(),
+			)
+		);
 	}
 
 	#[rstest]
@@ -47,12 +55,17 @@ pub mod render_tests {
 		let html = render_imported_project_card(&summary).render_to_string();
 
 		// Assert
-		assert!(html.contains(&format!(
-			"<article class=\"{}\">",
-			GITHUB_STYLES.project_card().as_str()
-		)));
-		assert!(html.contains("No active previews"));
-		assert!(!html.contains("rounded-md"));
+		assert_eq!(
+			html,
+			format!(
+				"<article class=\"{}\"><div class=\"{}\"><div class=\"{}\">kent8192/reinhardt-cloud</div><div class=\"{}\">Project: reinhardt-cloud / production: main</div></div><div class=\"{}\">No active previews</div></article>",
+				GITHUB_STYLES.project_card().as_str(),
+				DEPLOYMENT_STYLES.preview_identity().as_str(),
+				DEPLOYMENT_STYLES.preview_name().as_str(),
+				DEPLOYMENT_STYLES.preview_meta().as_str(),
+				DEPLOYMENT_STYLES.preview_empty().as_str(),
+			)
+		);
 	}
 
 	#[rstest]
@@ -60,9 +73,12 @@ pub mod render_tests {
 		// Assert
 		assert!(!GITHUB_LIST_SOURCE.contains("class: \""));
 		assert!(GITHUB_LIST_SOURCE.contains("STYLES.page_layout()"));
-		assert!(GITHUB_LIST_SOURCE.contains("STYLES.refetch_notice()"));
-		assert!(GITHUB_STYLE_SOURCE.contains("@media (min-width: 1024px)"));
-		assert!(GITHUB_STYLE_SOURCE.contains("@media (min-width: 640px)"));
+		assert!(GITHUB_STYLE_SOURCE.contains(
+			".page_layout {\n\t\tdisplay: grid;\n\t\tgap: 1.5rem;\n\t\t@media (min-width: 1024px) {\n\t\t\tgrid-template-columns: (1fr, 22.5rem);"
+		));
+		assert!(GITHUB_STYLE_SOURCE.contains(
+			".onboarding_action {\n\t\tdisplay: flex;\n\t\tflex-direction: column;\n\t\tgap: 0.75rem;\n\t\t@media (min-width: 640px) {\n\t\t\tflex-direction: row;\n\t\t\talign-items: center;\n\t\t\tjustify-content: space-between;"
+		));
 	}
 
 	fn github_summary(previews: Vec<PreviewSummary>) -> ProjectPreviewSummary {

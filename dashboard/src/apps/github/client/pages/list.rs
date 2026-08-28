@@ -81,6 +81,24 @@ fn query_error_message(error: Option<ServerFnError>) -> String {
 	error.map_or_else(String::new, |error| error.user_message().to_owned())
 }
 
+fn render_imported_projects_initial_state(status: QueryStatus) -> Option<Page> {
+	match status {
+		QueryStatus::Idle | QueryStatus::Pending => Some(page!({
+			div {
+				class: SHARED_STYLES.empty(),
+				"Loading imported projects..."
+			}
+		})),
+		QueryStatus::Error => Some(page!({
+			div {
+				class: STYLES.query_notice() + STYLES.query_warning(),
+				"Imported projects are temporarily unavailable"
+			}
+		})),
+		QueryStatus::Success => None,
+	}
+}
+
 fn import_field_error(
 	field_errors: Signal<HashMap<GitHubRepositoryImportRequestClientFormField, FieldError>>,
 	field: GitHubRepositoryImportRequestClientFormField,
@@ -353,23 +371,12 @@ pub fn github_repositories_page() -> Page {
 									}
 								{
 									let snapshot = props.imported_project_previews_for_list.snapshot();
-									match snapshot.status {
-										QueryStatus::Idle | QueryStatus::Pending => page!({
-											div {
-												class: SHARED_STYLES.empty(),
-												"Loading imported projects..."
-											}
-										}),
-										QueryStatus::Error => page!({
-											div {
-												class: STYLES.query_notice() + STYLES.query_warning(),
-												"Imported projects are temporarily unavailable"
-											}
-										}),
-										QueryStatus::Success => match snapshot.data {
+									match render_imported_projects_initial_state(snapshot.status) {
+										Some(initial_state) => initial_state,
+										None => match snapshot.data {
 											Some(items) if items.is_empty() => page!({
-											div {
-												class: SHARED_STYLES.empty(),
+												div {
+													class: SHARED_STYLES.empty(),
 													"No imported projects yet"
 												}
 											}),
@@ -861,12 +868,14 @@ mod tests {
 		let html = refetch_notice(false, Some(error), "repositories").render_to_string();
 
 		// Assert
-		assert!(html.contains(&format!(
-			"<div class=\"{} {}\">",
-			STYLES.refetch_notice().as_str(),
-			STYLES.refetch_warning().as_str(),
-		)));
-		assert!(html.contains("Refresh failed: GitHub refresh timed out"));
+		assert_eq!(
+			html,
+			format!(
+				"<div class=\"{} {}\">Refresh failed: GitHub refresh timed out</div>",
+				STYLES.refetch_notice().as_str(),
+				STYLES.refetch_warning().as_str(),
+			)
+		);
 	}
 
 	#[rstest]
@@ -875,12 +884,51 @@ mod tests {
 		let html = refetch_notice(true, None, "repositories").render_to_string();
 
 		// Assert
-		assert!(html.contains(&format!(
-			"<div class=\"{} {}\">",
-			STYLES.refetch_notice().as_str(),
-			STYLES.refetch_pending().as_str(),
-		)));
-		assert!(html.contains("Refreshing repositories..."));
+		assert_eq!(
+			html,
+			format!(
+				"<div class=\"{} {}\">Refreshing repositories...</div>",
+				STYLES.refetch_notice().as_str(),
+				STYLES.refetch_pending().as_str(),
+			)
+		);
+	}
+
+	#[rstest]
+	#[case::idle(QueryStatus::Idle)]
+	#[case::pending(QueryStatus::Pending)]
+	fn imported_projects_initial_state_renders_loading(#[case] status: QueryStatus) {
+		// Act
+		let html = render_imported_projects_initial_state(status)
+			.expect("initial state should render")
+			.render_to_string();
+
+		// Assert
+		assert_eq!(
+			html,
+			format!(
+				"<div class=\"{}\">Loading imported projects...</div>",
+				SHARED_STYLES.empty().as_str(),
+			)
+		);
+	}
+
+	#[rstest]
+	fn imported_projects_initial_state_renders_error() {
+		// Act
+		let html = render_imported_projects_initial_state(QueryStatus::Error)
+			.expect("initial state should render")
+			.render_to_string();
+
+		// Assert
+		assert_eq!(
+			html,
+			format!(
+				"<div class=\"{} {}\">Imported projects are temporarily unavailable</div>",
+				STYLES.query_notice().as_str(),
+				STYLES.query_warning().as_str(),
+			)
+		);
 	}
 
 	#[rstest]
