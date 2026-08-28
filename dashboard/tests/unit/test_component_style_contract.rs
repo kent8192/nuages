@@ -5,6 +5,8 @@ const AUTH_STYLE_SOURCE: &str = include_str!("../../src/apps/auth/client/style.r
 const DASHBOARD_CLIENT_SOURCE: &str = include_str!("../../src/apps/dashboard/client.rs");
 const DASHBOARD_LAYOUT_SOURCE: &str = include_str!("../../src/apps/dashboard/client/layout.rs");
 const DASHBOARD_STYLE_SOURCE: &str = include_str!("../../src/apps/dashboard/client/style.rs");
+const CLUSTERS_CLIENT_SOURCE: &str = include_str!("../../src/apps/clusters/client.rs");
+const CLUSTERS_LIST_SOURCE: &str = include_str!("../../src/apps/clusters/client/pages/list.rs");
 const SHARED_IMPERATIVE_SOURCES: &[(&str, &str)] = &[
 	(
 		"entity_select",
@@ -170,5 +172,23 @@ fn dashboard_overview_panels_preserve_the_desktop_asymmetric_ratio() {
 	assert!(
 		has_desktop_ratio,
 		"desktop overview panels must retain the 1.2fr to 0.8fr ratio"
+	);
+}
+
+#[test]
+fn clusters_page_uses_typed_shared_and_cluster_style_tokens() {
+	// Arrange
+	let cluster_sources = [CLUSTERS_LIST_SOURCE];
+
+	// Act + Assert
+	for source in cluster_sources {
+		assert!(
+			!source.contains("class: \""),
+			"cluster client sources must use typed shared or cluster-local style tokens"
+		);
+	}
+	assert!(
+		CLUSTERS_CLIENT_SOURCE.contains("pub mod style;"),
+		"clusters client module must export its local style module"
 	);
 }

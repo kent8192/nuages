@@ -9,12 +9,14 @@ use reinhardt::pages::event::{ClickEvent, InputEvent, SubmitEvent};
 use reinhardt::pages::form;
 use reinhardt::pages::page;
 use reinhardt::pages::prelude::{
-	Action, Callback, FieldError, FormState, QueryClient, QueryHandle, QueryOptions, QueryStatus,
-	Signal, UseFormAsyncSubmitOutcome, queries, use_action, use_callback, use_form, use_query,
+	Action, Callback, ClassToken, FieldError, FormState, QueryClient, QueryHandle, QueryOptions,
+	QueryStatus, Signal, UseFormAsyncSubmitOutcome, queries, use_action, use_callback, use_form,
+	use_query,
 };
 use reinhardt::pages::reactive::ExplicitDeps;
 use reinhardt::pages::server_fn::ServerFnError;
 
+use crate::apps::clusters::client::style::STYLES;
 use crate::apps::clusters::model_form::{
 	ClusterCreateFields, ClusterCreateFormFormSchema, ClusterCreateFormModelFormData,
 };
@@ -30,21 +32,22 @@ use crate::apps::clusters::server_fn::{
 };
 use crate::apps::deployments::client::components::cluster_health::cluster_health_container;
 use crate::shared::client::components::entity_select::{EntitySelectOption, entity_select};
+use crate::shared::client::style::STYLES as SHARED_STYLES;
 
 fn alert(error: Signal<Option<String>>) -> Page {
 	page!({
 		{
 			error
-	.get()
-	.map(|message| {
-		page!({
-			div {
-				class: "rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700",
-				{ message }
-			}
-		})
-	})
-	.unwrap_or(Page::Empty)
+				.get()
+				.map(|message| {
+					page!({
+						div {
+							class: STYLES.alert() + STYLES.alert_error(),
+							{ message }
+						}
+					})
+				})
+				.unwrap_or(Page::Empty)
 		}
 	})
 }
@@ -67,7 +70,7 @@ fn query_refetch_notice(
 		);
 		return page!({
 			div {
-				class: "border-b border-amber-100 bg-amber-50 px-4 py-2 text-xs font-medium text-amber-700",
+				class: STYLES.refresh_notice() + STYLES.refresh_warning(),
 				{ message }
 			}
 		});
@@ -75,7 +78,7 @@ fn query_refetch_notice(
 	if is_fetching {
 		return page!({
 			div {
-				class: "border-b border-cloud-100 bg-cloud-50 px-4 py-2 text-xs font-medium text-cloud-600",
+				class: STYLES.refresh_notice() + STYLES.refresh_pending(),
 				"Refreshing " { label }"..."
 			}
 		});
@@ -160,16 +163,16 @@ fn success_alert(message: Signal<Option<String>>) -> Page {
 	page!({
 		{
 			message
-	.get()
-	.map(|message| {
-		page!({
-			div {
-				class: "rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-800",
-				{ message }
-			}
-		})
-	})
-	.unwrap_or(Page::Empty)
+				.get()
+				.map(|message| {
+					page!({
+						div {
+							class: STYLES.alert() + STYLES.alert_success(),
+							{ message }
+						}
+					})
+				})
+				.unwrap_or(Page::Empty)
 		}
 	})
 }
@@ -187,7 +190,7 @@ where
 					let message = error.message().to_owned();
 					page!({
 						p {
-							class: "mt-1 text-xs font-medium text-red-700",
+							class: STYLES.field_error(),
 							{ message }
 						}
 					})
@@ -237,7 +240,7 @@ fn render_cluster_update_form(view: ClusterUpdateFormView) -> Page {
 			let dirty_notice = if state.is_dirty.get() {
 				page!({
 					p {
-						class: "mt-2 text-xs text-amber-700",
+						class: STYLES.dirty_notice(),
 						"Unsaved changes"
 					}
 				})
@@ -247,7 +250,7 @@ fn render_cluster_update_form(view: ClusterUpdateFormView) -> Page {
 			let submit_status = if is_submitting {
 				page!({
 					p {
-						class: "mt-2 text-xs text-ink-600",
+						class: STYLES.action_status(),
 						"Updating..."
 					}
 				})
@@ -258,16 +261,16 @@ fn render_cluster_update_form(view: ClusterUpdateFormView) -> Page {
 				{ success_view }
 				{ error_view }
 				form {
-					class: "rc-form-stack mt-3",
+					class: SHARED_STYLES.form_stack() + STYLES.form_margin(),
 					@submit: submit,
 					div {
-						class: "rc-field",
+						class: SHARED_STYLES.field(),
 						label {
-							span { class: "rc-label", "Name" }
+							span { class: SHARED_STYLES.label(), "Name" }
 							input {
 								id: "update-cluster-name",
 								aria_label: "Cluster name",
-								class: "rc-input",
+								class: SHARED_STYLES.input(),
 								type: "text",
 								maxlength: 63,
 								bind: name,
@@ -276,13 +279,13 @@ fn render_cluster_update_form(view: ClusterUpdateFormView) -> Page {
 						{ name_error }
 					}
 					div {
-						class: "rc-field",
+						class: SHARED_STYLES.field(),
 						label {
-							span { class: "rc-label", "API URL" }
+							span { class: SHARED_STYLES.label(), "API URL" }
 							input {
 								id: "update-cluster-api-url",
 								aria_label: "Cluster API URL",
-								class: "rc-input",
+								class: SHARED_STYLES.input(),
 								type: "text",
 								maxlength: 2048,
 								bind: api_url,
@@ -291,7 +294,7 @@ fn render_cluster_update_form(view: ClusterUpdateFormView) -> Page {
 						{ api_url_error }
 					}
 					label {
-						class: "rc-checkbox-field",
+						class: SHARED_STYLES.checkbox_field(),
 						input {
 							id: "update-cluster-active",
 							type: "checkbox",
@@ -301,7 +304,7 @@ fn render_cluster_update_form(view: ClusterUpdateFormView) -> Page {
 					}
 					button {
 						type: "submit",
-						class: "btn-dark min-h-11 w-full",
+						class: SHARED_STYLES.button_dark() + STYLES.form_submit(),
 						disabled: is_submitting,
 						"Update cluster"
 					}
@@ -345,9 +348,9 @@ fn render_delete_cluster_action(view: DeleteClusterActionView) -> Page {
 				{ success_view }
 				{ error_view }
 				div {
-					class: "rc-form-stack mt-3",
+					class: SHARED_STYLES.form_stack() + STYLES.form_margin(),
 					label {
-						class: "flex items-start gap-2 text-sm text-ink-700",
+						class: STYLES.confirmation_field(),
 						input {
 							id: "confirm-cluster-delete",
 							type: "checkbox",
@@ -357,7 +360,7 @@ fn render_delete_cluster_action(view: DeleteClusterActionView) -> Page {
 					}
 					button {
 						type: "button",
-						class: "btn-danger min-h-11 w-full",
+						class: SHARED_STYLES.button_danger() + STYLES.form_submit(),
 						disabled: !is_confirmed || !has_selected_cluster || is_pending,
 						@click: delete,
 						"Delete cluster"
@@ -365,7 +368,7 @@ fn render_delete_cluster_action(view: DeleteClusterActionView) -> Page {
 						if is_pending {
 							page!( {
 								p {
-									class: "text-xs text-ink-600",
+									class: STYLES.action_status(),
 									"Deleting..."
 								}
 							})
@@ -413,22 +416,22 @@ fn render_rotate_cluster_token_action(view: RotateClusterTokenActionView) -> Pag
 			let token_confirmation = action.result().map(|token| {
 				page!({
 					div {
-						class: "mt-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950",
+						class: STYLES.token_notice(),
 						p {
-							class: "font-semibold",
+							class: STYLES.token_title(),
 							{ format!("{} is ready.", token.cluster.name) }
 						}
 						p {
-							class: "mt-1",
+							class: STYLES.token_message(),
 							"Save this agent token now. It cannot be shown again."
 						}
 						code {
-							class: "mt-2 block break-all rounded bg-white px-2 py-1 font-mono text-xs",
+							class: STYLES.token_value(),
 							{ token.auth_token }
 						}
 						button {
 							type: "button",
-							class: "btn-dark mt-3 min-h-10",
+							class: SHARED_STYLES.button_dark() + STYLES.token_dismiss(),
 							@click: dismiss,
 							"I have saved this token"
 						}
@@ -439,9 +442,9 @@ fn render_rotate_cluster_token_action(view: RotateClusterTokenActionView) -> Pag
 			page!({
 				{ error_view }
 				div {
-					class: "rc-form-stack mt-3",
+					class: SHARED_STYLES.form_stack() + STYLES.form_margin(),
 					label {
-						class: "flex items-start gap-2 text-sm text-ink-700",
+						class: STYLES.confirmation_field(),
 						input {
 							id: "confirm-cluster-token-rotation",
 							type: "checkbox",
@@ -451,7 +454,7 @@ fn render_rotate_cluster_token_action(view: RotateClusterTokenActionView) -> Pag
 					}
 					button {
 						type: "button",
-						class: "btn-warning min-h-11 w-full",
+						class: SHARED_STYLES.button_warning() + STYLES.form_submit(),
 						disabled: !is_confirmed || !has_selected_cluster || is_pending,
 						@click: rotate,
 						"Rotate token"
@@ -459,7 +462,7 @@ fn render_rotate_cluster_token_action(view: RotateClusterTokenActionView) -> Pag
 						if is_pending {
 							page!( {
 								p {
-									class: "text-xs text-ink-600",
+									class: STYLES.action_status(),
 									"Rotating..."
 								}
 							})
@@ -490,11 +493,19 @@ fn cluster_select_options(items: &[ClusterInfo]) -> Vec<EntitySelectOption> {
 		.collect()
 }
 
+fn cluster_badge_state(is_active: bool) -> ClassToken {
+	if is_active {
+		STYLES.cluster_badge_active()
+	} else {
+		STYLES.cluster_badge_inactive()
+	}
+}
+
 fn render_cluster_inventory(items: Vec<ClusterInfo>) -> Page {
 	if items.is_empty() {
 		return page!({
 			div {
-				class: "rc-empty",
+				class: SHARED_STYLES.empty(),
 				"No clusters registered."
 			}
 		});
@@ -502,63 +513,70 @@ fn render_cluster_inventory(items: Vec<ClusterInfo>) -> Page {
 
 	page!({
 		div {
-			class: "overflow-x-auto",
+			class: STYLES.inventory_scroll(),
 			table {
-				class: "rc-table",
+				class: SHARED_STYLES.table(),
 				thead {
-					class: "bg-cloud-50",
+					class: STYLES.inventory_head(),
 					tr {
 						th {
-							class: "rc-th",
+							class: SHARED_STYLES.table_header(),
 							"ID"
 						}
 						th {
-							class: "rc-th",
+							class: SHARED_STYLES.table_header(),
 							"Name"
 						}
 						th {
-							class: "rc-th",
+							class: SHARED_STYLES.table_header(),
 							"API URL"
 						}
 						th {
-							class: "rc-th",
+							class: SHARED_STYLES.table_header(),
 							"Active"
 						}
 						th {
-							class: "rc-th",
+							class: SHARED_STYLES.table_header(),
 							"Token Rotated"
 						}
 					}
 				}
 				tbody {
-					class: "divide-y divide-cloud-100 bg-white",
-					{ items.clone().into_iter().map(|cluster| page!({
-						tr {
-							td {
-								class: "px-4 py-2 font-mono text-xs text-ink-600",
-								{ cluster.id.to_string() }
-							}
-							td {
-								class: "px-4 py-2 font-semibold text-ink-950",
-								{ cluster.name }
-							}
-							td {
-								class: "px-4 py-2 text-ink-600",
-								{ cluster.api_url }
-							}
-							td {
-								class: "px-4 py-2",
-								span {
-									class: if cluster.is_active { "rounded-full bg-control-500/10 px-2 py-0.5 text-xs font-semibold text-control-700" } else { "rounded-full bg-cloud-100 px-2 py-0.5 text-xs font-semibold text-ink-600" },
-									{ if cluster.is_active { "Active" } else { "Inactive" } }
+					class: STYLES.inventory_body(),
+					{ items
+					.clone()
+					.into_iter()
+					.map(|cluster| {
+						page!({
+							tr {
+								class: STYLES.inventory_row(),
+								td {
+									class: SHARED_STYLES.table_cell() + STYLES.inventory_id(),
+									{ cluster.id.to_string() }
+								}
+								td {
+									class: SHARED_STYLES.table_cell() + STYLES.inventory_name(),
+									{ cluster.name }
+								}
+								td {
+									class: SHARED_STYLES.table_cell(),
+									{ cluster.api_url }
+								}
+								td {
+									class: SHARED_STYLES.table_cell(),
+									span {
+										class: STYLES.cluster_badge() + self::cluster_badge_state(cluster.is_active),
+										{ if cluster.is_active { "Active" } else { "Inactive" } }
+									}
+								}
+								td {
+									class: SHARED_STYLES.table_cell(),
+									{ cluster.token_last_rotated_at.clone().unwrap_or_else(|| "never".to_string()) }
 								}
 							}
-							td {
-								class: "px-4 py-2 text-ink-600",
-								{ cluster.token_last_rotated_at.clone().unwrap_or_else(|| "never".to_string()) }
-							}
-						}
-					})).collect::<Vec<_>>() }
+						})
+					})
+					.collect::<Vec<_>>() }
 				}
 			}
 		}
@@ -599,7 +617,6 @@ pub fn clusters_list_page() -> Page {
 		policy: ClusterCreateFields,
 		fields: [name, api_url],
 		server_fn: create_cluster_for_current_org,
-		class: "rc-form-grid",
 		overrides: {
 			name: {
 				label: "Name",
@@ -687,22 +704,22 @@ pub fn clusters_list_page() -> Page {
 				.map(|token| {
 					page!({
 						div {
-							class: "mt-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950",
+							class: STYLES.token_notice(),
 							p {
-								class: "font-semibold",
+								class: STYLES.token_title(),
 								{ format!("{} is ready.", token.cluster.name) }
 							}
 							p {
-								class: "mt-1",
+								class: STYLES.token_message(),
 								"Save this agent token now. It cannot be shown again."
 							}
 							code {
-								class: "mt-2 block break-all rounded bg-white px-2 py-1 font-mono text-xs",
+								class: STYLES.token_value(),
 								{ token.auth_token }
 							}
 							button {
 								type: "button",
-								class: "btn-dark mt-3 min-h-10",
+								class: SHARED_STYLES.button_dark() + STYLES.token_dismiss(),
 								@click: create_dismiss,
 								"I have saved this token"
 							}
@@ -712,20 +729,20 @@ pub fn clusters_list_page() -> Page {
 			let token_confirmation = token_confirmation.unwrap_or(Page::Empty);
 			page!({
 				div {
-					class: "space-y-3",
+					class: SHARED_STYLES.stack(),
 					{ create_error }
 					form {
-						class: "rc-form-grid",
+						class: SHARED_STYLES.form_grid(),
 						@submit: create_submit,
 						div {
-							class: "rc-field",
+							class: SHARED_STYLES.field(),
 							label {
-								span { class: "rc-label", "Name" }
+								span { class: SHARED_STYLES.label(), "Name" }
 								input {
 									id: "create-cluster-name",
 									name: "name",
 									aria_label: "Cluster name",
-									class: "rc-input",
+									class: SHARED_STYLES.input(),
 									type: "text",
 									maxlength: 63,
 									placeholder: "prod-us-east",
@@ -733,20 +750,20 @@ pub fn clusters_list_page() -> Page {
 								}
 							}
 							p {
-								class: "mt-1 text-xs text-ink-600",
+								class: STYLES.form_help(),
 								"For example: prod-us-east"
 							}
 							{ create_name_error }
 						}
 						div {
-							class: "rc-field",
+							class: SHARED_STYLES.field(),
 							label {
-								span { class: "rc-label", "API URL" }
+								span { class: SHARED_STYLES.label(), "API URL" }
 								input {
 									id: "create-cluster-api-url",
 									name: "api_url",
 									aria_label: "Cluster API URL",
-									class: "rc-input",
+									class: SHARED_STYLES.input(),
 									type: "text",
 									maxlength: 2048,
 									placeholder: "https://kubernetes.example.com:6443",
@@ -754,14 +771,16 @@ pub fn clusters_list_page() -> Page {
 								}
 							}
 							p {
-								class: "mt-1 text-xs text-ink-600",
+								class: STYLES.form_help(),
 								"For example: https://kubernetes.example.com:6443"
 							}
 							{ create_api_url_error }
 						}
 						button {
 							type: "submit",
-							class: "btn-primary min-h-11 w-full md:w-auto md:justify-self-start",
+							class: SHARED_STYLES.button_primary()
+								+ STYLES.form_submit()
+								+ STYLES.create_submit(),
 							disabled: is_submitting,
 							{
 								if is_submitting { "Registering..." } else { "Register cluster" }
@@ -973,47 +992,47 @@ pub fn clusters_list_page() -> Page {
 
 	page!({
 		div {
-			class: "rc-shell",
+			class: SHARED_STYLES.shell(),
 			div {
-				class: "space-y-0",
+				class: STYLES.content_stack(),
 				div {
-					class: "rc-topline",
+					class: SHARED_STYLES.topline(),
 					div {
 						p {
-							class: "rc-kicker",
+							class: SHARED_STYLES.kicker(),
 							"Infrastructure"
 						}
 						h1 {
-							class: "rc-title",
+							class: SHARED_STYLES.title(),
 							"Clusters"
 						}
 						p {
-							class: "rc-muted mt-1",
+							class: SHARED_STYLES.muted(),
 							"Registered Kubernetes clusters and agent health."
 						}
 					}
 				}
 				div {
-					class: "grid gap-6 lg:grid-cols-[1fr_320px]",
+					class: STYLES.page_layout(),
 					div {
-						class: "space-y-6",
+						class: STYLES.content_stack(),
 						section {
-							class: "rc-panel",
+							class: SHARED_STYLES.panel(),
 							div {
-								class: "rc-panel-head",
+								class: SHARED_STYLES.panel_head(),
 								"Cluster Inventory"
 							}{
 								let snapshot = props.clusters_for_inventory.snapshot();
 								match snapshot.status {
 									QueryStatus::Idle => page!({
 										div {
-											class: "rc-empty",
+											class: SHARED_STYLES.empty(),
 											"Clusters are not available during server rendering."
 										}
 									}),
 									QueryStatus::Pending => page!({
 										div {
-											class: "rc-empty",
+											class: SHARED_STYLES.empty(),
 											"Loading clusters..."
 										}
 									}),
@@ -1024,7 +1043,7 @@ pub fn clusters_list_page() -> Page {
 										);
 										page!({
 											div {
-												class: "px-4 py-8 text-sm font-medium text-red-700",
+												class: STYLES.query_error(),
 												{ message }
 											}
 										})
@@ -1046,28 +1065,28 @@ pub fn clusters_list_page() -> Page {
 							}
 						}
 						section {
-							class: "rc-panel-pad",
+							class: SHARED_STYLES.panel_pad(),
 							h2 {
-								class: "mb-3 text-sm font-semibold text-ink-950",
+								class: STYLES.section_title(),
 								"Register Cluster"
 							}
 							{ props.create_view.clone() }
 						}
 						section {
-							class: "rc-panel-pad",
+							class: SHARED_STYLES.panel_pad(),
 							h2 {
-								class: "mb-3 text-sm font-semibold text-ink-950",
+								class: STYLES.section_title(),
 								"Agent Health"
 							}
 							{ props.health.clone() }
 						}
 					}
 					aside {
-						class: "rc-stack",
+						class: SHARED_STYLES.stack(),
 						section {
-							class: "rc-panel-pad",
+							class: SHARED_STYLES.panel_pad(),
 							h2 {
-								class: "mb-3 text-sm font-semibold text-ink-950",
+								class: STYLES.section_title(),
 								"Cluster Operations"
 							}
 							{
@@ -1108,13 +1127,13 @@ pub fn clusters_list_page() -> Page {
 									}
 									QueryStatus::Idle => page!({
 										p {
-											class: "mb-3 text-xs text-cloud-500",
+											class: STYLES.operation_status() + STYLES.operation_idle(),
 											"Clusters are not available during server rendering."
 										}
 									}),
 									QueryStatus::Pending => page!({
 										p {
-											class: "mb-3 text-xs text-ink-600",
+											class: STYLES.operation_status() + STYLES.operation_pending(),
 											"Loading clusters..."
 										}
 									}),
@@ -1125,7 +1144,7 @@ pub fn clusters_list_page() -> Page {
 										);
 										page!({
 											p {
-												class: "mb-3 text-xs font-medium text-red-700",
+												class: STYLES.operation_status() + STYLES.operation_error(),
 												{ message }
 											}
 										})
@@ -1135,7 +1154,7 @@ pub fn clusters_list_page() -> Page {
 								props.edit_view.clone()
 							}
 							div {
-								class: "my-4 border-t border-cloud-200"
+								class: STYLES.operation_divider()
 							}
 							{
 								let snapshot = props.clusters_for_rotate.snapshot();
@@ -1162,13 +1181,13 @@ pub fn clusters_list_page() -> Page {
 									}
 									QueryStatus::Idle => page!({
 										p {
-											class: "mb-3 text-xs text-cloud-500",
+											class: STYLES.operation_status() + STYLES.operation_idle(),
 											"Clusters are not available during server rendering."
 										}
 									}),
 									QueryStatus::Pending => page!({
 										p {
-											class: "mb-3 text-xs text-ink-600",
+											class: STYLES.operation_status() + STYLES.operation_pending(),
 											"Loading clusters..."
 										}
 									}),
@@ -1179,7 +1198,7 @@ pub fn clusters_list_page() -> Page {
 										);
 										page!({
 											p {
-												class: "mb-3 text-xs font-medium text-red-700",
+												class: STYLES.operation_status() + STYLES.operation_error(),
 												{ message }
 											}
 										})
@@ -1189,7 +1208,7 @@ pub fn clusters_list_page() -> Page {
 								props.rotate_view.clone()
 							}
 							div {
-								class: "my-4 border-t border-cloud-200"
+								class: STYLES.operation_divider()
 							}
 							{
 								let snapshot = props.clusters_for_delete.snapshot();
@@ -1216,13 +1235,13 @@ pub fn clusters_list_page() -> Page {
 									}
 									QueryStatus::Idle => page!({
 										p {
-											class: "mb-3 text-xs text-cloud-500",
+											class: STYLES.operation_status() + STYLES.operation_idle(),
 											"Clusters are not available during server rendering."
 										}
 									}),
 									QueryStatus::Pending => page!({
 										p {
-											class: "mb-3 text-xs text-ink-600",
+											class: STYLES.operation_status() + STYLES.operation_pending(),
 											"Loading clusters..."
 										}
 									}),
@@ -1233,7 +1252,7 @@ pub fn clusters_list_page() -> Page {
 										);
 										page!({
 											p {
-												class: "mb-3 text-xs font-medium text-red-700",
+												class: STYLES.operation_status() + STYLES.operation_error(),
 												{ message }
 											}
 										})
