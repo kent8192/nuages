@@ -147,10 +147,10 @@ selection, while a malformed value is rejected by the typed extractor.
 Deployment IDs are `i64`; no UUID compatibility adapter is used.
 
 GitHub repository imports use the repository `selected` flag plus the dedicated
-`import_claimed_at` timestamp as a bounded 30-minute lease. Repository
-synchronization does not renew an active lease. An interrupted import is
-reclaimed only when no project row exists, and the conditional timestamp check
-prevents one import from clearing another import's lease.
+`import_claimed_at` timestamp as a renewable 30-minute lease. The import handler
+renews its claim every 10 minutes; repository synchronization does not. An
+interrupted import is reclaimed only when no project row exists, and both
+renewal and recovery compare the exact active timestamp so only one can win.
 
 ### OAuth account linking
 

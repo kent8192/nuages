@@ -6,7 +6,7 @@ use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 use serde::{Deserialize, Serialize};
 
 #[cfg(native)]
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeDelta, Utc};
 #[cfg(native)]
 use reinhardt::core::exception::Error as AppError;
 
@@ -14,6 +14,8 @@ use crate::apps::deployments::server_fn::ProjectPreviewSummary;
 
 #[cfg(native)]
 const GITHUB_IMPORT_CLAIM_TTL_SECONDS: i64 = 30 * 60;
+#[cfg(native)]
+const GITHUB_IMPORT_CLAIM_HEARTBEAT_SECONDS: u64 = (GITHUB_IMPORT_CLAIM_TTL_SECONDS / 3) as u64;
 
 /// Return whether a repository import claim has outlived its recovery lease.
 #[cfg(native)]
@@ -22,6 +24,71 @@ pub(crate) fn github_import_claim_is_stale(
 	now: DateTime<Utc>,
 ) -> bool {
 	now.signed_duration_since(claim_started_at).num_seconds() >= GITHUB_IMPORT_CLAIM_TTL_SECONDS
+}
+
+/// Clear the exact import claim observed by a stale-claim recovery attempt.
+#[cfg(native)]
+pub(crate) async fn recover_github_import_claim(
+	repository_id: i64,
+	claimed_at: Option<DateTime<Utc>>,
+	updated_at: DateTime<Utc>,
+) -> Result<u64, ServerFnError> {
+	use reinhardt::Model;
+
+	use crate::apps::github::models::GitHubRepository;
+
+	let mut claim_query = GitHubRepository::objects()
+		.filter(GitHubRepository::field_id().eq(repository_id))
+		.filter(GitHubRepository::field_selected().eq(true));
+	if let Some(claimed_at) = claimed_at {
+		claim_query =
+			claim_query.filter(GitHubRepository::field_import_claimed_at().eq(Some(claimed_at)));
+	} else {
+		// Legacy selected rows have no dedicated lease timestamp; keep the
+		// fallback compare conditional so a concurrent refresh cannot clear a
+		// newer claim after it has been initialized.
+		claim_query = claim_query
+			.filter(GitHubRepository::field_import_claimed_at().is_null())
+			.filter(GitHubRepository::field_updated_at().eq(updated_at));
+	}
+	claim_query
+		.update_fields(vec![
+			GitHubRepository::field_selected().assign(false),
+			GitHubRepository::field_import_claimed_at().assign(Option::<DateTime<Utc>>::None),
+		])
+		.await
+		.map_err(|e| {
+			ServerFnError::application(format!(
+				"Failed to recover GitHub repository import claim: {e}"
+			))
+		})
+}
+
+/// Advance an active import claim only when its current lease still matches.
+#[cfg(native)]
+pub(crate) async fn renew_github_import_claim(
+	repository_id: i64,
+	claimed_at: DateTime<Utc>,
+	renewed_at: DateTime<Utc>,
+) -> Result<u64, ServerFnError> {
+	use reinhardt::Model;
+
+	use crate::apps::github::models::GitHubRepository;
+
+	GitHubRepository::objects()
+		.filter(GitHubRepository::field_id().eq(repository_id))
+		.filter(GitHubRepository::field_selected().eq(true))
+		.filter(GitHubRepository::field_import_claimed_at().eq(Some(claimed_at)))
+		.update_fields(vec![
+			GitHubRepository::field_import_claimed_at().assign(Some(renewed_at)),
+			GitHubRepository::field_updated_at().assign(renewed_at),
+		])
+		.await
+		.map_err(|e| {
+			ServerFnError::application(format!(
+				"Failed to renew GitHub repository import claim: {e}"
+			))
+		})
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -474,31 +541,12 @@ pub async fn import_github_repository_for_current_org(
 		&& observed_claimed_at
 			.is_some_and(|claimed_at| github_import_claim_is_stale(claimed_at, Utc::now()))
 	{
-		let mut claim_query = GitHubRepository::objects()
-			.filter(GitHubRepository::field_id().eq(repository_id))
-			.filter(GitHubRepository::field_selected().eq(true));
-		if let Some(claimed_at) = repository.import_claimed_at {
-			claim_query = claim_query
-				.filter(GitHubRepository::field_import_claimed_at().eq(Some(claimed_at)));
-		} else {
-			// Legacy selected rows have no dedicated lease timestamp; keep the
-			// fallback compare conditional so a concurrent refresh cannot clear a
-			// newer claim after it has been initialized.
-			claim_query = claim_query
-				.filter(GitHubRepository::field_import_claimed_at().is_null())
-				.filter(GitHubRepository::field_updated_at().eq(repository.updated_at));
-		}
-		claim_query
-			.update_fields(vec![
-				GitHubRepository::field_selected().assign(false),
-				GitHubRepository::field_import_claimed_at().assign(Option::<DateTime<Utc>>::None),
-			])
-			.await
-			.map_err(|e| {
-				ServerFnError::application(format!(
-					"Failed to recover GitHub repository import claim: {e}"
-				))
-			})?;
+		recover_github_import_claim(
+			repository_id,
+			repository.import_claimed_at,
+			repository.updated_at,
+		)
+		.await?;
 	}
 	let claim_started_at = Utc::now();
 	let claimed = GitHubRepository::objects()
@@ -520,7 +568,7 @@ pub async fn import_github_repository_for_current_org(
 		)]));
 	}
 
-	let result = async {
+	let import = async {
 		let mut import_spec = import_spec_from_repository(&repository, &project_name, &registry)
 			.map_err(|message| {
 				let field = if project_name.is_empty() {
@@ -631,13 +679,46 @@ pub async fn import_github_repository_for_current_org(
 			}
 		};
 		Ok(github_project_info(project))
-	}
-	.await;
+	};
+	tokio::pin!(import);
+	let heartbeat_period = std::time::Duration::from_secs(GITHUB_IMPORT_CLAIM_HEARTBEAT_SECONDS);
+	let mut heartbeat = tokio::time::interval_at(
+		tokio::time::Instant::now() + heartbeat_period,
+		heartbeat_period,
+	);
+	heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+	let mut active_claimed_at = claim_started_at;
+	let result = loop {
+		tokio::select! {
+			biased;
+			_ = heartbeat.tick() => {
+				let renewed_at = Utc::now().max(
+					active_claimed_at + TimeDelta::microseconds(1),
+				);
+				match renew_github_import_claim(
+					repository_id,
+					active_claimed_at,
+					renewed_at,
+				)
+				.await
+				{
+					Ok(1) => active_claimed_at = renewed_at,
+					Ok(_) => {
+						break Err(ServerFnError::application(
+							"GitHub repository import claim was lost",
+						));
+					}
+					Err(error) => break Err(error),
+				}
+			}
+			result = &mut import => break result,
+		}
+	};
 	if result.is_err()
 		&& let Err(error) = GitHubRepository::objects()
 			.filter(GitHubRepository::field_id().eq(repository_id))
 			.filter(GitHubRepository::field_selected().eq(true))
-			.filter(GitHubRepository::field_import_claimed_at().eq(Some(claim_started_at)))
+			.filter(GitHubRepository::field_import_claimed_at().eq(Some(active_claimed_at)))
 			.update_fields(vec![
 				GitHubRepository::field_selected().assign(false),
 				GitHubRepository::field_import_claimed_at().assign(Option::<DateTime<Utc>>::None),

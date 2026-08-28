@@ -131,12 +131,12 @@ route receives `Query(logs): Query<Option<i64>>`: an omitted parameter is no
 selection, while a malformed value is rejected by the typed extractor. No UUID
 adapter is provided.
 
-GitHub repository imports hold a bounded 30-minute lease in the repository's
-dedicated `import_claimed_at` column while the external pipeline runs.
-Repository synchronization does not renew an active lease. If the process is
-interrupted before a project row is written, the next import request reclaims
-the expired lease; a conditional timestamp check prevents an older request
-from clearing a newer claim.
+GitHub repository imports hold a renewable 30-minute lease in the repository's
+dedicated `import_claimed_at` column while the external pipeline runs. The
+import handler renews its claim every 10 minutes; repository synchronization
+does not. If the process is interrupted before a project row is written, the
+next import request reclaims the expired lease. Renewal and recovery compare
+the exact active timestamp so only one can win.
 
 Application logs are read through the Dashboard's JWT-protected gRPC `LogServiceServer`. In development the server is backed by the in-process `LocalLogService`; in clusters it can be backed by `reinhardt-cloud-telemetry::LokiLogService` by setting `log_backend = "loki"` or `REINHARDT_CLOUD_LOG_BACKEND=loki`. The Loki backend reads historical logs with `/loki/api/v1/query_range` and tails live logs with `/loki/api/v1/tail`.
 
