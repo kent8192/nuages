@@ -215,6 +215,67 @@ The migration command is provided by reinhardt-web's built-in `migrate` manageme
 - **API, auth, authorization, dependency injection, modeling, admin** (`api-development`, `authentication`, `authorization`, `dependency-injection`, `modeling`, `admin`): verify server-function input ownership, session revalidation, organization scoping, injected services, database constraints, and admin registrations.
 - **Lint and testing** (`lint`, `testing`): run the format, native/WASM compile, component, database-schema, and migration-idempotence checks required by the Dashboard CI gate.
 
+### Component styles and stylesheet extraction
+
+The v0.4.0-alpha.11 Dashboard follows the Reinhardt Pages Project Template for
+component styles. Each application owns `dashboard/src/apps/<app>/client/style.rs`
+and exports it from its `client.rs` with `pub mod style;`. Shared primitives
+that are intentionally cross-app belong in `dashboard/src/shared/client/style.rs`.
+This keeps page-specific layout and state rules with their owning app rather
+than creating a global Dashboard stylesheet.
+
+Each stylesheet declares a crate-unique collection with `#[style_def]` and
+`style!`. Pages use generated `ClassToken` accessors, such as
+`class: STYLES.page()`, and compose base and state tokens with `+` into a
+typed `ClassList`. Imperative DOM paths and raw HTML fragments interpolate
+those generated accessors. They do not construct raw class values.
+
+`dashboard/index.html` loads exactly one generated stylesheet:
+
+```html
+<link rel="stylesheet" href='{{ static_url("__reinhardt__/components.css") }}'>
+```
+
+The document reset and pre-WASM loading rule in that static shell are the only
+plain-CSS exception because generated component hashes do not exist before the
+WASM client mounts. All rendered Pages UI uses generated tokens. UnoCSS,
+Tailwind, utility-class literals, and a Node CSS pipeline are not part of the
+Dashboard styling contract.
+
+Extract component definitions after a style change with the Dashboard package
+and its complete feature set selected:
+
+```bash
+cd dashboard
+cargo run --locked --bin manage -- \
+  collectstatic --no-input --package reinhardt-cloud-dashboard --all-features
+```
+
+`manifest.json` maps the logical `__reinhardt__/components.css` entry to the
+content-hashed CSS file below `STATIC_ROOT` that static serving returns. The
+template link resolves the logical path through the configured static URL.
+Workspace-root `cargo make runserver` performs static collection in its
+local-infrastructure preflight and starts Pages serving; dashboard-local
+`cargo make runserver` starts directly and therefore needs explicit collection
+after style changes. Generated static output is not committed.
+
+For a styling change, run the source contract, format and lint gates, and both
+target checks:
+
+```bash
+cargo test -p reinhardt-cloud-dashboard --test unit test_component_style_contract --all-features
+cargo make fmt-check
+cargo make clippy-check
+cargo check -p reinhardt-cloud-dashboard --all-features
+cargo check -p reinhardt-cloud-dashboard --target wasm32-unknown-unknown --all-features
+cargo run --locked --bin manage -- \
+  collectstatic --no-input --package reinhardt-cloud-dashboard --all-features
+```
+
+Verify that `manifest.json` maps `__reinhardt__/components.css` to a generated
+CSS path, then verify that resolved file is non-empty. Remove generated static
+output after local inspection.
+
 ### Static asset / WASM asset caching
 
 The Dashboard serves admin static assets at `/api/static/admin/` via reinhardt-admin's built-in static file serving. The WASM bundle for the client SPA is loaded by `dashboard/index.html` (700 B shell HTML at repo root of the dashboard directory).

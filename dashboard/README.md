@@ -55,11 +55,41 @@ cargo make dev-watch        # Development with auto-reload (requires bacon)
 cargo make runserver-watch  # Start server with auto-reload (requires bacon)
 ```
 
-Dashboard form styling is centralized in the UnoCSS runtime shortcuts inside
-`index.html`. Prefer the shared `rc-form-*`, `rc-field`, `rc-label`,
-`rc-input`, `rc-textarea`, `rc-checkbox`, and `btn-*` classes over page-local
-utility strings so generated `form!` markup stays consistent across auth,
-cluster, deployment, and GitHub pages.
+### Component styles
+
+The v0.4.0-alpha.11 Dashboard follows the Reinhardt Pages Project Template:
+each app owns its component stylesheet at
+`src/apps/<app>/client/style.rs` and exports it from `client.rs` with
+`pub mod style;`. Cross-app primitives belong in
+`src/shared/client/style.rs`; app-specific layout and state rules remain in
+the owning app stylesheet.
+
+Styles use a crate-unique `#[style_def]` collection built with `style!`.
+Components consume the generated `ClassToken` accessors with
+`class: STYLES.rule()` and compose state with `+`, which yields a typed
+`ClassList`. Imperative DOM and raw HTML fragments must interpolate those
+generated accessors rather than construct class values directly. Do not add
+UnoCSS, Tailwind, a Node CSS pipeline, or utility-class strings.
+
+`index.html` links the generated
+`__reinhardt__/components.css` asset once through `static_url`. Its small
+plain-CSS document reset and loading rule are the only styling exception:
+they render before generated component hashes are available. All rendered Pages
+UI uses generated style tokens.
+
+Extract styles after changing a `style!` definition with:
+
+```bash
+cargo run --locked --bin manage -- \
+  collectstatic --no-input --package reinhardt-cloud-dashboard --all-features
+```
+
+`manifest.json` records the logical `__reinhardt__/components.css` asset and
+resolves it to its content-hashed CSS file below `STATIC_ROOT`. The
+workspace-root `cargo make runserver` preflight performs static collection and
+the Pages server serves the linked asset; the dashboard-local `cargo make
+runserver` skips that preflight. Generated static output is a build artifact
+and is not committed.
 
 In `page!` forms, place controls inside their visible `label` and style the
 label text with a nested `rc-label` span. This preserves native label behavior
@@ -139,6 +169,7 @@ cargo make test             # Run all tests (native nextest + WASM browser E2E)
 cargo make test-unit        # Run unit tests only
 cargo make test-integration # Run integration tests only
 cargo make test-watch       # Run tests with auto-reload (requires bacon)
+cargo test --test unit test_component_style_contract --all-features
 ```
 
 ### Project Management
@@ -160,6 +191,12 @@ cargo make clippy-fix       # Fix linting issues
 cargo make quality          # Run all checks (format + lint)
 cargo make quality-fix      # Fix all issues automatically
 ```
+
+For a style change, run the component source contract above, `cargo make
+fmt-check`, `cargo make clippy-check`, and native plus WASM dashboard checks.
+After extraction, verify the `manifest.json` mapping for the logical
+`__reinhardt__/components.css` asset and that its resolved hashed CSS file is
+non-empty.
 
 ### Build
 

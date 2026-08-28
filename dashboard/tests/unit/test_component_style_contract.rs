@@ -1,5 +1,10 @@
 //! Source-level contracts for Dashboard's generated component stylesheet.
 
+use std::{
+	fs,
+	path::{Path, PathBuf},
+};
+
 const INDEX_HTML: &str = include_str!("../../index.html");
 const AUTH_STYLE_SOURCE: &str = include_str!("../../src/apps/auth/client/style.rs");
 const DASHBOARD_CLIENT_SOURCE: &str = include_str!("../../src/apps/dashboard/client.rs");
@@ -47,6 +52,129 @@ const AUTH_PRODUCTION_SOURCES: &[(&str, &str)] = &[
 	),
 ];
 
+fn source_style_violations(source: &str) -> Vec<&'static str> {
+	let mut violations = Vec::new();
+	let lowercase_source = source.to_ascii_lowercase();
+
+	for framework in ["unocss", "tailwind"] {
+		if lowercase_source.contains(framework) {
+			violations.push(match framework {
+				"unocss" => "unocss reference",
+				"tailwind" => "tailwind reference",
+				_ => unreachable!("the framework list is fixed"),
+			});
+		}
+	}
+
+	if source.contains("class: \"") {
+		violations.push("raw page class literal");
+	}
+	if source.contains("set_attribute(\"class\", \"") {
+		violations.push("imperative utility class literal");
+	}
+	if source.match_indices("class=\"").any(|(index, _)| {
+		source[index + "class=\"".len()..]
+			.chars()
+			.next()
+			.is_some_and(|character| character != '{')
+	}) {
+		violations.push("raw HTML utility class literal");
+	}
+
+	violations
+}
+
+fn production_client_sources() -> Vec<PathBuf> {
+	let source_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+	let mut paths = Vec::new();
+	collect_rust_sources(&source_root, &mut paths);
+
+	paths
+		.into_iter()
+		.filter(|path| is_production_client_source(path, &source_root))
+		.collect()
+}
+
+fn collect_rust_sources(directory: &Path, paths: &mut Vec<PathBuf>) {
+	let mut entries = fs::read_dir(directory)
+		.unwrap_or_else(|error| panic!("failed to read {}: {error}", directory.display()))
+		.map(|entry| entry.expect("source directory entry should be readable"))
+		.collect::<Vec<_>>();
+	entries.sort_by_key(|entry| entry.path());
+
+	for entry in entries {
+		let path = entry.path();
+		if path.is_dir() {
+			collect_rust_sources(&path, paths);
+		} else if path.extension().is_some_and(|extension| extension == "rs") {
+			paths.push(path);
+		}
+	}
+}
+
+fn is_production_client_source(path: &Path, source_root: &Path) -> bool {
+	path.file_name().is_some_and(|name| name == "client.rs")
+		|| path
+			.strip_prefix(source_root)
+			.expect("source path must remain under src")
+			.components()
+			.any(|component| component.as_os_str() == "client")
+}
+
+#[test]
+fn source_gate_rejects_forbidden_style_inputs() {
+	// Arrange
+	let source = r##"
+		page!({ div { class: "p-4" } });
+		element.set_attribute("class", "flex");
+		element.set_inner_html(r#"<div class="gap-4"></div>"#);
+		let framework = "TaIlWiNd";
+	"##;
+
+	// Act
+	let violations = source_style_violations(source);
+
+	// Assert
+	assert_eq!(
+		violations,
+		vec![
+			"tailwind reference",
+			"raw page class literal",
+			"imperative utility class literal",
+			"raw HTML utility class literal",
+		]
+	);
+}
+
+#[test]
+fn production_client_sources_use_generated_style_tokens() {
+	// Arrange
+	let sources = production_client_sources();
+
+	// Act
+	let diagnostics = sources
+		.iter()
+		.flat_map(|path| {
+			let source = fs::read_to_string(path)
+				.unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+			source_style_violations(&source)
+				.into_iter()
+				.map(move |violation| format!("{}: {violation}", path.display()))
+		})
+		.collect::<Vec<_>>();
+
+	// Assert
+	assert!(
+		!sources.is_empty(),
+		"the Dashboard must contain client Rust modules"
+	);
+	assert!(
+		diagnostics.is_empty(),
+		"production client sources must use generated ClassToken/ClassList accessors:\n{}",
+		diagnostics.join("\n")
+	);
+}
+
 #[test]
 fn generated_component_stylesheet_is_the_only_document_style_runtime() {
 	// Arrange
@@ -55,10 +183,17 @@ fn generated_component_stylesheet_is_the_only_document_style_runtime() {
 	// Act
 	let unocss_references = document.matches("unocss").count();
 	let component_stylesheet_links = document.matches("__reinhardt__/components.css").count();
+	let has_component_stylesheet_link = document.contains(
+		r#"<link rel="stylesheet" href='{{ static_url("__reinhardt__/components.css") }}'>"#,
+	);
 
 	// Assert
 	assert_eq!(unocss_references, 0);
 	assert_eq!(component_stylesheet_links, 1);
+	assert!(
+		has_component_stylesheet_link,
+		"the generated component stylesheet path must be a stylesheet link"
+	);
 }
 
 #[test]
