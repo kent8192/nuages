@@ -2,6 +2,8 @@
 
 const INDEX_HTML: &str = include_str!("../../index.html");
 const AUTH_STYLE_SOURCE: &str = include_str!("../../src/apps/auth/client/style.rs");
+const DASHBOARD_CLIENT_SOURCE: &str = include_str!("../../src/apps/dashboard/client.rs");
+const DASHBOARD_LAYOUT_SOURCE: &str = include_str!("../../src/apps/dashboard/client/layout.rs");
 const SHARED_IMPERATIVE_SOURCES: &[(&str, &str)] = &[
 	(
 		"entity_select",
@@ -136,5 +138,23 @@ fn auth_actions_share_one_spacing_token() {
 	assert!(
 		!has_duplicate_spacing,
 		"auth actions must not define duplicate spacing tokens"
+	);
+}
+
+#[test]
+fn dashboard_shell_uses_typed_shared_and_dashboard_style_tokens() {
+	// Arrange
+	let dashboard_sources = [DASHBOARD_CLIENT_SOURCE, DASHBOARD_LAYOUT_SOURCE];
+
+	// Act + Assert
+	for source in dashboard_sources {
+		assert!(
+			!source.contains("class: \""),
+			"dashboard client sources must use typed shared or dashboard-local style tokens"
+		);
+	}
+	assert!(
+		DASHBOARD_CLIENT_SOURCE.contains("pub mod style;"),
+		"dashboard client module must export its local style module"
 	);
 }

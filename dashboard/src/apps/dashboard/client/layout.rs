@@ -3,18 +3,20 @@
 use reinhardt::pages::component;
 use reinhardt::pages::event::ClickEvent;
 use reinhardt::pages::page;
-use reinhardt::pages::prelude::{Action, Outlet, Page, use_action};
+use reinhardt::pages::prelude::{Action, ClassToken, Outlet, Page, use_action};
 use reinhardt::pages::server_fn::ServerFnError;
 
 #[cfg(wasm)]
 use crate::apps::auth::server_fn::logout::logout;
+use crate::apps::dashboard::client::style::STYLES;
 use crate::shared::client::routes::route_href;
+use crate::shared::client::style::STYLES as SHARED_STYLES;
 
-fn nav_item_class(is_active: bool) -> &'static str {
+fn nav_item_class(is_active: bool) -> ClassToken {
 	if is_active {
-		"block rounded-md border border-control-500/20 bg-control-500/10 px-3 py-2 text-sm font-bold text-control-700 shadow-[inset_3px_0_0_#147d74]"
+		STYLES.navigation_item_active()
 	} else {
-		"block rounded-md border border-transparent px-3 py-2 text-sm font-semibold text-ink-600 hover:border-cloud-200 hover:bg-white hover:text-ink-950"
+		STYLES.navigation_item()
 	}
 }
 
@@ -85,40 +87,40 @@ pub fn dashboard_layout(outlet: Outlet) -> Page {
 			let logout_action = logout_action;
 			page!({
 				div {
-					class: "rc-app flex flex-col",
+					class: SHARED_STYLES.app() + STYLES.dashboard_app(),
 					header {
-						class: "sticky top-0 z-10 h-16 border-b border-cloud-200 bg-white/90 backdrop-blur flex items-center justify-between px-4 sm:px-6 shrink-0",
+						class: STYLES.dashboard_header(),
 						div {
-							class: "flex items-center gap-3",
+							class: STYLES.header_brand(),
 							span {
-								class: "grid h-9 w-9 place-items-center rounded-md bg-ink-950 text-sm font-bold text-white shadow-[0_10px_20px_rgba(17,16,19,0.16)]",
+								class: STYLES.brand_mark(),
 								"RC"
 							}
 							div {
 								span {
-									class: "block text-base font-bold leading-tight text-ink-950",
+									class: STYLES.brand_name(),
 									"Reinhardt Cloud"
 								}
 								span {
-									class: "hidden text-xs font-semibold uppercase text-ink-600 sm:block",
+									class: STYLES.brand_subtitle(),
 									"Deploy control"
 								}
 							}
 						}
 						div {
-							class: "flex items-center gap-2 sm:gap-3",
+							class: STYLES.header_actions(),
 							span {
-								class: "hidden rounded-md border border-cloud-200 bg-cloud-50 px-3 py-1.5 text-xs font-bold uppercase text-ink-600 sm:inline-flex",
+								class: STYLES.header_health(),
 								"Healthy"
 							}
 							a {
 								href: account_href.clone(),
-								class: "rc-link",
+								class: SHARED_STYLES.link() + STYLES.header_action(),
 								"Account"
 							}
 							button {
 								type: "button",
-								class: "rc-link",
+								class: SHARED_STYLES.link() + STYLES.header_action(),
 								@click: move |event: ClickEvent| {
 									event.prevent_default();
 									logout_action.dispatch(());
@@ -128,22 +130,22 @@ pub fn dashboard_layout(outlet: Outlet) -> Page {
 						}
 					}
 					div {
-						class: "flex flex-1 flex-col md:flex-row",
+						class: STYLES.dashboard_body(),
 						nav {
-							class: "box-border w-full border-b border-cloud-200 bg-cloud-50/85 p-4 shrink-0 md:min-h-[calc(100vh-4rem)] md:w-64 md:border-b-0 md:border-r md:bg-white/80",
+							class: STYLES.sidebar(),
 							div {
-								class: "mb-4 rounded-md border border-cloud-200 bg-white p-3",
+								class: STYLES.organization(),
 								p {
-									class: "text-xs font-bold uppercase text-ink-600",
+									class: STYLES.organization_label(),
 									"Organization"
 								}
 								p {
-									class: "mt-1 truncate text-sm font-bold text-ink-950",
+									class: STYLES.organization_name(),
 									"current workspace"
 								}
 							}
 							ul {
-								class: "space-y-1.5",
+								class: STYLES.navigation_list(),
 								li {
 									a {
 										href: home_href,
@@ -182,7 +184,7 @@ pub fn dashboard_layout(outlet: Outlet) -> Page {
 							}
 						}
 						main {
-							class: "min-w-0 flex-1",
+							class: STYLES.dashboard_main(),
 							{ outlet }
 						}
 					}
@@ -200,120 +202,126 @@ pub fn dashboard_shell() -> Page {
 	let github_href = route_href("github:repositories", "/github");
 	page!({
 		div {
-			class: "rc-shell",
+			class: SHARED_STYLES.shell(),
 			div {
-				class: "rc-topline",
+				class: SHARED_STYLES.topline(),
 				div {
 					p {
-						class: "rc-kicker",
+						class: SHARED_STYLES.kicker(),
 						"Control plane"
 					}
 					h1 {
-						class: "rc-title mt-1",
+						class: SHARED_STYLES.title() + STYLES.overview_title(),
 						"Deployment Operations"
 					}
 				}
 				p {
-					class: "rc-muted max-w-xl",
+					class: SHARED_STYLES.muted() + STYLES.overview_description(),
 					"Live workspace for clusters, deployments, source imports, and account access."
 				}
 			}
 			div {
-				class: "grid grid-cols-1 gap-4 md:grid-cols-3",
+				class: STYLES.overview_metrics(),
 				div {
-					class: "rc-panel-pad border-l-4 border-l-control-500",
+					class: SHARED_STYLES.panel_pad()
+						+ STYLES.metric_card()
+						+ STYLES.metric_clusters(),
 					h3 {
-						class: "text-xs font-bold uppercase text-ink-600",
+						class: STYLES.metric_label(),
 						"Clusters"
 					}
 					p {
-						class: "mt-3 text-3xl font-bold text-ink-950",
+						class: STYLES.metric_value(),
 						"0"
 					}
 					p {
-						class: "mt-1 text-xs font-semibold text-ink-600",
+						class: STYLES.metric_detail(),
 						"registered targets"
 					}
 				}
 				div {
-					class: "rc-panel-pad border-l-4 border-l-relay-500",
+					class: SHARED_STYLES.panel_pad()
+						+ STYLES.metric_card()
+						+ STYLES.metric_deployments(),
 					h3 {
-						class: "text-xs font-bold uppercase text-ink-600",
+						class: STYLES.metric_label(),
 						"Deployments"
 					}
 					p {
-						class: "mt-3 text-3xl font-bold text-ink-950",
+						class: STYLES.metric_value(),
 						"0"
 					}
 					p {
-						class: "mt-1 text-xs font-semibold text-ink-600",
+						class: STYLES.metric_detail(),
 						"active releases"
 					}
 				}
 				div {
-					class: "rc-panel-pad border-l-4 border-l-signal-500",
+					class: SHARED_STYLES.panel_pad()
+						+ STYLES.metric_card()
+						+ STYLES.metric_status(),
 					h3 {
-						class: "text-xs font-bold uppercase text-ink-600",
+						class: STYLES.metric_label(),
 						"System Status"
 					}
 					p {
-						class: "mt-3 inline-flex rounded-full bg-control-500/10 px-2.5 py-1 text-sm font-bold text-control-700",
+						class: STYLES.healthy_status(),
 						"Healthy"
 					}
 					p {
-						class: "mt-2 text-xs font-semibold text-ink-600",
+						class: STYLES.metric_detail(),
 						"router and websocket ready"
 					}
 				}
 			}
 			div {
-				class: "mt-6 grid gap-4 lg:grid-cols-[1.2fr_0.8fr]",
+				class: STYLES.overview_panels(),
 				section {
-					class: "rc-panel",
+					class: SHARED_STYLES.panel(),
 					div {
-						class: "rc-panel-head",
+						class: SHARED_STYLES.panel_head(),
 						"Runbook"
 					}
 					div {
-						class: "grid gap-0 divide-y divide-cloud-200",
+						class: STYLES.runbook_list(),
 						a {
 							href: clusters_href.clone(),
-							class: "flex items-center justify-between px-4 py-3 text-sm font-semibold text-ink-800 hover:bg-cloud-50",
+							class: STYLES.runbook_link(),
 							"Register cluster" span {
-								class: "text-control-700",
+								class: STYLES.runbook_link_action(),
 								"Open"
 							}
 						}
 						a {
 							href: deployments_href.clone(),
-							class: "flex items-center justify-between px-4 py-3 text-sm font-semibold text-ink-800 hover:bg-cloud-50",
+							class: STYLES.runbook_link(),
 							"Create deployment" span {
-								class: "text-control-700",
+								class: STYLES.runbook_link_action(),
 								"Open"
 							}
 						}
 						a {
 							href: github_href.clone(),
-							class: "flex items-center justify-between px-4 py-3 text-sm font-semibold text-ink-800 hover:bg-cloud-50",
+							class: STYLES.runbook_link(),
 							"Import repository" span {
-								class: "text-control-700",
+								class: STYLES.runbook_link_action(),
 								"Open"
 							}
 						}
 					}
 				}
 				section {
-					class: "rc-panel-pad bg-ink-950 text-white",
+					class: SHARED_STYLES.panel_pad() + STYLES.control_surface(),
 					p {
-						class: "text-xs font-bold uppercase text-cloud-200",
+						class: STYLES.control_surface_label(),
 						"Control Surface"
 					}
 					p {
-						class: "mt-3 text-2xl font-bold",
+						class: STYLES.control_surface_title(),
 						"Dogfood-ready"
 					}
 					p {
-						class: "mt-2 text-sm text-cloud-100",
+						class: STYLES.control_surface_description(),
 						"Dashboard routes are rendered through the shared Reinhardt application shell."
 					}
 				}
@@ -359,5 +367,11 @@ mod tests {
 			.map(|fragment| fragment.split('"').next().unwrap_or_default())
 			.collect::<Vec<_>>();
 		assert_eq!(hrefs, vec!["/clusters", "/deployments", "/github"]);
+		assert!(html.contains(super::STYLES.overview_metrics().as_str()));
+		assert!(html.contains(super::STYLES.runbook_link().as_str()));
+		assert!(
+			html.contains(super::SHARED_STYLES.panel().as_str()),
+			"runbook retains the shared panel structure"
+		);
 	}
 }
