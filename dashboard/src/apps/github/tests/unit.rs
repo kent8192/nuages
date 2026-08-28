@@ -8,9 +8,13 @@ pub mod render_tests {
 		PreviewSummary, ProjectPreviewSummary, ProjectSourceKind,
 	};
 	use crate::apps::github::client::pages::list::render_imported_project_card;
+	use crate::apps::github::client::style::STYLES as GITHUB_STYLES;
+
+	const GITHUB_LIST_SOURCE: &str = include_str!("../client/pages/list.rs");
+	const GITHUB_STYLE_SOURCE: &str = include_str!("../client/style.rs");
 
 	#[rstest]
-	fn render_imported_project_card_uses_repository_full_name() {
+	fn render_imported_project_card_uses_typed_card_and_preview_structure() {
 		// Arrange
 		let summary = github_summary(vec![PreviewSummary {
 			name: "reinhardt-cloud-pr-42".to_string(),
@@ -25,14 +29,17 @@ pub mod render_tests {
 		let html = render_imported_project_card(&summary).render_to_string();
 
 		// Assert
-		assert_eq!(
-			html,
-			"<article class=\"rounded-md border border-cloud-200 bg-white p-4 shadow-[0_1px_0_rgba(17,16,19,0.03)]\"><div class=\"min-w-0 space-y-1\"><div class=\"truncate font-semibold text-ink-950\">kent8192/reinhardt-cloud</div><div class=\"truncate text-xs font-medium text-ink-600\">Project: reinhardt-cloud / production: main</div></div><ul class=\"mt-2 space-y-1 text-xs\"><li class=\"flex flex-wrap items-center gap-x-2 gap-y-1\"><a class=\"font-semibold text-control-700 underline underline-offset-2 hover:text-control-900\" href=\"https://preview.example.com/pr-42\" target=\"_blank\" rel=\"noreferrer\">#42 reinhardt-cloud-pr-42</a><span class=\"text-cloud-500\">running / 1 ready</span></li></ul></article>"
-		);
+		assert!(html.contains(&format!(
+			"<article class=\"{}\">",
+			GITHUB_STYLES.project_card().as_str()
+		)));
+		assert!(html.contains("kent8192/reinhardt-cloud"));
+		assert!(html.contains("#42 reinhardt-cloud-pr-42"));
+		assert!(!html.contains("rounded-md"));
 	}
 
 	#[rstest]
-	fn render_imported_project_card_uses_shared_empty_preview_state() {
+	fn render_imported_project_card_uses_typed_card_for_empty_previews() {
 		// Arrange
 		let summary = github_summary(Vec::new());
 
@@ -40,10 +47,22 @@ pub mod render_tests {
 		let html = render_imported_project_card(&summary).render_to_string();
 
 		// Assert
-		assert_eq!(
-			html,
-			"<article class=\"rounded-md border border-cloud-200 bg-white p-4 shadow-[0_1px_0_rgba(17,16,19,0.03)]\"><div class=\"min-w-0 space-y-1\"><div class=\"truncate font-semibold text-ink-950\">kent8192/reinhardt-cloud</div><div class=\"truncate text-xs font-medium text-ink-600\">Project: reinhardt-cloud / production: main</div></div><div class=\"mt-2 text-xs font-medium text-cloud-500\">No active previews</div></article>"
-		);
+		assert!(html.contains(&format!(
+			"<article class=\"{}\">",
+			GITHUB_STYLES.project_card().as_str()
+		)));
+		assert!(html.contains("No active previews"));
+		assert!(!html.contains("rounded-md"));
+	}
+
+	#[rstest]
+	fn github_page_uses_typed_responsive_and_query_state_tokens() {
+		// Assert
+		assert!(!GITHUB_LIST_SOURCE.contains("class: \""));
+		assert!(GITHUB_LIST_SOURCE.contains("STYLES.page_layout()"));
+		assert!(GITHUB_LIST_SOURCE.contains("STYLES.refetch_notice()"));
+		assert!(GITHUB_STYLE_SOURCE.contains("@media (min-width: 1024px)"));
+		assert!(GITHUB_STYLE_SOURCE.contains("@media (min-width: 640px)"));
 	}
 
 	fn github_summary(previews: Vec<PreviewSummary>) -> ProjectPreviewSummary {

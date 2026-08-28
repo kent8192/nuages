@@ -24,6 +24,7 @@ use crate::apps::deployments::server_fn::ProjectPreviewSummary;
 use crate::apps::deployments::server_fn::{
 	list_deployment_previews_for_current_org, list_deployments_for_current_org,
 };
+use crate::apps::github::client::style::STYLES;
 #[cfg(native)]
 use crate::apps::github::server_fn::GitHubProjectInfo;
 #[cfg(wasm)]
@@ -35,21 +36,22 @@ use crate::apps::github::server_fn::{
 	list_github_repositories_for_current_org,
 };
 use crate::shared::client::components::entity_select::{EntitySelectOption, entity_select};
+use crate::shared::client::style::STYLES as SHARED_STYLES;
 
 fn alert(error: Signal<Option<String>>) -> Page {
 	page!({
 		{
 			error
-	.get()
-	.map(|message| {
-		page!({
-			div {
-				class: "rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700",
-				{ message }
-			}
-		})
-	})
-	.unwrap_or(Page::Empty)
+				.get()
+				.map(|message| {
+					page!({
+						div {
+							class: STYLES.alert(),
+							{ message }
+						}
+					})
+				})
+				.unwrap_or(Page::Empty)
 		}
 	})
 }
@@ -59,7 +61,7 @@ fn refetch_notice(is_fetching: bool, error: Option<ServerFnError>, label: &'stat
 		let message = format!("Refresh failed: {}", error.user_message());
 		return page!({
 			div {
-				class: "mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800",
+				class: STYLES.refetch_notice() + STYLES.refetch_warning(),
 				{ message }
 			}
 		});
@@ -67,7 +69,7 @@ fn refetch_notice(is_fetching: bool, error: Option<ServerFnError>, label: &'stat
 	if is_fetching {
 		return page!({
 			div {
-				class: "mb-3 rounded-md border border-cloud-100 bg-cloud-50 px-3 py-2 text-xs font-medium text-cloud-600",
+				class: STYLES.refetch_notice() + STYLES.refetch_pending(),
 				"Refreshing " { label }"..."
 			}
 		});
@@ -92,7 +94,7 @@ fn import_field_error(
 					let message = error.message().to_owned();
 					page!({
 						p {
-							class: "mt-1 text-xs font-medium text-red-700",
+							class: STYLES.field_error(),
 							{ message }
 						}
 					})
@@ -107,7 +109,7 @@ pub(crate) fn render_imported_project_card(summary: &ProjectPreviewSummary) -> P
 	let previews = render_preview_list(summary);
 	page!({
 		article {
-			class: "rounded-md border border-cloud-200 bg-white p-4 shadow-[0_1px_0_rgba(17,16,19,0.03)]",
+			class: STYLES.project_card(),
 			{ identity }
 			{ previews }
 		}
@@ -225,17 +227,17 @@ pub fn github_repositories_page() -> Page {
 	});
 	let import_view = page!({
 		form {
-			class: "rc-form-stack",
+			class: SHARED_STYLES.form_stack(),
 			@submit: submit_import,
 			div {
-				class: "rc-field",
+				class: SHARED_STYLES.field(),
 				label {
-					class: "rc-label",
+					class: SHARED_STYLES.label(),
 					"Project name"
 				}
 				input {
 					aria_label: "Project name",
-					class: "rc-input",
+					class: SHARED_STYLES.input(),
 					type: "text",
 					placeholder: "leave blank to derive from repository",
 					bind: import_project_name,
@@ -246,14 +248,14 @@ pub fn github_repositories_page() -> Page {
 				) }
 			}
 			div {
-				class: "rc-field",
+				class: SHARED_STYLES.field(),
 				label {
-					class: "rc-label",
+					class: SHARED_STYLES.label(),
 					"Registry Image Prefix"
 				}
 				input {
 					aria_label: "Registry Image Prefix",
-					class: "rc-input",
+					class: SHARED_STYLES.input(),
 					type: "text",
 					placeholder: "ghcr.io/kent8192/my-app",
 					bind: import_registry,
@@ -265,7 +267,7 @@ pub fn github_repositories_page() -> Page {
 			}
 			button {
 				type: "submit",
-				class: "btn-primary min-h-11 w-full md:w-auto md:justify-self-start",
+				class: SHARED_STYLES.button_primary() + STYLES.form_submit(),
 				disabled: import_state.is_submitting.get(),
 				{
 					if import_state.is_submitting.get() { "Importing..." } else { "Import repository" }
@@ -310,38 +312,37 @@ pub fn github_repositories_page() -> Page {
 
 	page!({
 		div {
-			class: "rc-shell",
+			class: SHARED_STYLES.shell(),
 			div {
-				class: "space-y-0",
 				div {
-					class: "rc-topline",
+					class: SHARED_STYLES.topline(),
 					div {
 						p {
-							class: "rc-kicker",
+							class: SHARED_STYLES.kicker(),
 							"Source Control"
 						}
 						h1 {
-							class: "rc-title",
+							class: SHARED_STYLES.title(),
 							"GitHub Repositories"
 						}
 						p {
-							class: "rc-muted mt-1",
+							class: SHARED_STYLES.muted() + STYLES.page_intro(),
 							"Import GitHub App repositories into Reinhardt Cloud deployments."
 						}
 					}
 				}
 				div {
-					class: "grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]",
+					class: STYLES.page_layout(),
 					section {
-						class: "space-y-6",
+						class: STYLES.content_stack(),
 						section {
-							class: "rc-panel",
+							class: SHARED_STYLES.panel(),
 							div {
-								class: "rc-panel-head",
+								class: SHARED_STYLES.panel_head(),
 								"Imported Projects"
 							}
 							div {
-								class: "p-4",
+								class: STYLES.panel_body(),
 									{
 										let snapshot = imported_project_previews_for_refetch.snapshot();
 										self::refetch_notice(
@@ -355,26 +356,26 @@ pub fn github_repositories_page() -> Page {
 									match snapshot.status {
 										QueryStatus::Idle | QueryStatus::Pending => page!({
 											div {
-												class: "rc-empty",
+												class: SHARED_STYLES.empty(),
 												"Loading imported projects..."
 											}
 										}),
 										QueryStatus::Error => page!({
 											div {
-												class: "px-4 py-8 text-sm font-medium text-amber-700",
+												class: STYLES.query_notice() + STYLES.query_warning(),
 												"Imported projects are temporarily unavailable"
 											}
 										}),
 										QueryStatus::Success => match snapshot.data {
 											Some(items) if items.is_empty() => page!({
-												div {
-													class: "rc-empty",
+											div {
+												class: SHARED_STYLES.empty(),
 													"No imported projects yet"
 												}
 											}),
 											Some(items) => page!({
-												div {
-													class: "grid gap-3 xl:grid-cols-2",
+											div {
+												class: STYLES.project_grid(),
 													{ items.iter().map(self::render_imported_project_card).collect::<Vec<_>>() }
 												}
 											}),
@@ -385,12 +386,12 @@ pub fn github_repositories_page() -> Page {
 							}
 						}
 						section {
-							class: "rc-panel",
+							class: SHARED_STYLES.panel(),
 							div {
-								class: "rc-panel-head flex items-center justify-between gap-3",
+								class: SHARED_STYLES.panel_head() + STYLES.inventory_head(),
 								span { "Repository Inventory" }
 								span {
-									class: "rounded-full bg-control-500/10 px-2.5 py-1 text-[11px] font-bold text-control-700",
+									class: STYLES.github_badge(),
 									"GitHub App"
 								}
 							}
@@ -411,39 +412,39 @@ pub fn github_repositories_page() -> Page {
 								)
 							}
 							div {
-								class: "overflow-x-auto",
+								class: STYLES.inventory_scroll(),
 								table {
-									class: "rc-table",
+									class: SHARED_STYLES.table(),
 									thead {
-										class: "bg-cloud-50",
+										class: STYLES.inventory_header(),
 										tr {
 											th {
-												class: "rc-th",
+												class: SHARED_STYLES.table_header(),
 												"ID"
 											}
 											th {
-												class: "rc-th",
+												class: SHARED_STYLES.table_header(),
 												"Repository"
 											}
 											th {
-												class: "rc-th",
+												class: SHARED_STYLES.table_header(),
 												"Branch"
 											}
 											th {
-												class: "rc-th",
+												class: SHARED_STYLES.table_header(),
 												"State"
 											}
 										}
 									}
 									tbody {
-										class: "divide-y divide-cloud-100 bg-white",
+										class: STYLES.inventory_body(),
 										{
 											let snapshot = props.repositories_for_inventory.snapshot();
 											match snapshot.status {
 											QueryStatus::Idle | QueryStatus::Pending => page!({
 												tr {
 													td {
-														class: "rc-empty",
+														class: SHARED_STYLES.empty(),
 														colspan: 4,
 														"Loading repositories..."
 													}
@@ -454,7 +455,7 @@ pub fn github_repositories_page() -> Page {
 												page!({
 												tr {
 													td {
-														class: "px-4 py-8 text-sm font-medium text-red-700",
+														class: STYLES.query_notice() + STYLES.query_error(),
 														colspan: 4,
 														{ err }
 													}
@@ -466,17 +467,17 @@ pub fn github_repositories_page() -> Page {
 												page!({
 												tr {
 													td {
-														class: "rc-empty",
+														class: SHARED_STYLES.empty(),
 														colspan: 4,
 														{
 															let snapshot = onboarding.snapshot();
 															match snapshot.status {
 																QueryStatus::Success if snapshot.data.as_ref().is_some_and(|info| !info.github_account_linked) => page!({
 																	div {
-																		class: "flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between",
+																		class: STYLES.onboarding_action(),
 																		span { "Link your GitHub account before installing the GitHub App." }
 																		a {
-																			class: "btn-secondary text-xs",
+																			class: SHARED_STYLES.button_secondary() + STYLES.onboarding_button(),
 														href: "/api/auth/oauth/github/start/?intent=link",
 																			"Link GitHub account"
 																		}
@@ -485,11 +486,11 @@ pub fn github_repositories_page() -> Page {
 																QueryStatus::Success => {
 																	if let Some(url) = snapshot.data.and_then(|info| info.install_url) {
 																		page!({
-																			div {
-																				class: "flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between",
+																	div {
+																		class: STYLES.onboarding_action(),
 																				span { "No GitHub App repositories are available." }
-																				a {
-																					class: "btn-secondary text-xs",
+																		a {
+																			class: SHARED_STYLES.button_secondary() + STYLES.onboarding_button(),
 																					href: url,
 																					"Connect GitHub repositories"
 																				}
@@ -512,37 +513,42 @@ pub fn github_repositories_page() -> Page {
 												items.clone().into_iter().map(|repo| {
 													page!({
 														tr {
+															class: STYLES.inventory_row(),
 															td {
-																class: "px-4 py-3 font-mono text-xs text-ink-600",
+																class: SHARED_STYLES.table_cell() + STYLES.inventory_id(),
 																{
 																	repo.id.to_string()
 																}
 															}
 															td {
-																class: "px-4 py-3",
+																class: SHARED_STYLES.table_cell(),
 																div {
-																	class: "font-semibold text-ink-950",
+																	class: STYLES.repository_name(),
 																	{
 																		repo.full_name.clone()
 																	}
 																}
 																div {
-																	class: "mt-0.5 text-xs font-medium text-ink-600",
+																	class: STYLES.repository_visibility(),
 																	{
 																		if repo.private { "private" } else { "public" }
 																	}
 																}
 															}
 															td {
-																class: "px-4 py-3 font-mono text-xs text-ink-600",
+																class: SHARED_STYLES.table_cell() + STYLES.inventory_id(),
 																{
 																	repo.default_branch.clone()
 																}
 															}
 															td {
-																class: "px-4 py-3",
+																class: SHARED_STYLES.table_cell(),
 																span {
-																	class: if repo.selected { "rounded-full bg-control-500/10 px-2.5 py-0.5 text-xs font-semibold text-control-700" } else { "rounded-full bg-cloud-100 px-2.5 py-0.5 text-xs font-semibold text-ink-600" },
+																	class: if repo.selected {
+																		STYLES.repository_state() + STYLES.repository_state_imported()
+																	} else {
+																		STYLES.repository_state() + STYLES.repository_state_available()
+																	},
 																	{
 																		if repo.selected { "imported" } else { "available" }
 																	}
@@ -561,23 +567,23 @@ pub fn github_repositories_page() -> Page {
 						}
 					}
 					aside {
-						class: "rc-stack",
+						class: SHARED_STYLES.stack(),
 						section {
-							class: "rc-panel-pad",
+							class: SHARED_STYLES.panel_pad(),
 							h2 {
-								class: "mb-3 text-sm font-semibold text-ink-950",
+								class: STYLES.aside_title(),
 								"Import"
 							}
 							div {
-								class: "mb-4 grid gap-2 rounded-md border border-control-500/20 bg-control-500/5 p-3 text-sm",
+								class: STYLES.import_selection(),
 								div {
-									class: "flex items-center justify-between gap-3",
+									class: STYLES.import_selection_row(),
 									span {
-										class: "text-xs font-bold uppercase text-ink-600",
+										class: STYLES.import_selection_label(),
 										"Repository"
 									}
 									span {
-										class: "font-mono text-xs font-semibold text-ink-950",
+										class: STYLES.import_selection_value(),
 										{
 											let value = props.selected_repository_id.get();
 											if value.trim().is_empty() {
@@ -589,13 +595,13 @@ pub fn github_repositories_page() -> Page {
 									}
 								}
 								div {
-									class: "flex items-center justify-between gap-3",
+									class: STYLES.import_selection_row(),
 									span {
-										class: "text-xs font-bold uppercase text-ink-600",
+										class: STYLES.import_selection_label(),
 										"Cluster"
 									}
 									span {
-										class: "font-mono text-xs font-semibold text-ink-950",
+										class: STYLES.import_selection_value(),
 										{
 											let value = props.selected_cluster_id.get();
 											if value.trim().is_empty() {
@@ -607,13 +613,13 @@ pub fn github_repositories_page() -> Page {
 									}
 								}
 								div {
-									class: "flex items-center justify-between gap-3",
+									class: STYLES.import_selection_row(),
 									span {
-										class: "text-xs font-bold uppercase text-ink-600",
+										class: STYLES.import_selection_label(),
 										"App"
 									}
 									span {
-										class: "truncate text-xs font-semibold text-ink-950",
+										class: STYLES.import_selection_name(),
 										{
 											let value = props.selected_project_name.get();
 											if value.trim().is_empty() {
@@ -654,16 +660,16 @@ pub fn github_repositories_page() -> Page {
 										})
 									}
 									QueryStatus::Idle | QueryStatus::Pending => page!({
-										p {
-											class: "mb-3 text-xs text-cloud-500",
+									p {
+										class: STYLES.import_pending(),
 											"Loading repositories..."
 										}
 									}),
 									QueryStatus::Error => {
 										let error = self::query_error_message(snapshot.error);
 										page!({
-										p {
-											class: "mb-3 text-xs font-medium text-red-700",
+									p {
+										class: STYLES.import_error(),
 											{ error }
 										}
 										})
@@ -690,16 +696,16 @@ pub fn github_repositories_page() -> Page {
 										})
 									}
 									QueryStatus::Idle | QueryStatus::Pending => page!({
-										p {
-											class: "mb-3 text-xs text-cloud-500",
+									p {
+										class: STYLES.import_pending(),
 											"Loading clusters..."
 										}
 									}),
 									QueryStatus::Error => {
 										let error = self::query_error_message(snapshot.error);
 										page!({
-										p {
-											class: "mb-3 text-xs font-medium text-red-700",
+									p {
+										class: STYLES.import_error(),
 											{ error }
 										}
 										})
@@ -711,15 +717,15 @@ pub fn github_repositories_page() -> Page {
 							}
 							if props.import_submitting.get() {
 								p {
-									class: "mt-2 text-sm text-cloud-500",
+									class: STYLES.action_status(),
 									"Importing..."
 								}
 							}
 						}
 						section {
-							class: "rc-panel-pad",
+							class: SHARED_STYLES.panel_pad(),
 								h2 {
-									class: "mb-3 text-sm font-semibold text-ink-950",
+									class: STYLES.aside_title(),
 									"Active Clusters"
 								}
 								{
@@ -731,13 +737,13 @@ pub fn github_repositories_page() -> Page {
 									)
 								}
 								div {
-									class: "space-y-2 text-sm",
+									class: STYLES.cluster_list(),
 									{
 										let snapshot = props.clusters_for_inventory.snapshot();
 										match snapshot.status {
 										QueryStatus::Idle | QueryStatus::Pending => page!({
 											p {
-												class: "text-cloud-500",
+												class: STYLES.cluster_empty(),
 												"Loading clusters..."
 											}
 										}),
@@ -745,14 +751,14 @@ pub fn github_repositories_page() -> Page {
 											let err = self::query_error_message(snapshot.error);
 											page!({
 											p {
-												class: "text-red-700",
+												class: STYLES.cluster_error(),
 												{ err }
 											}
 											})
 										},
 											QueryStatus::Success if snapshot.data.as_ref().is_some_and(Vec::is_empty) => page!({
 											p {
-												class: "text-cloud-500",
+												class: STYLES.cluster_empty(),
 												"No active clusters."
 											}
 											}),
@@ -762,19 +768,19 @@ pub fn github_repositories_page() -> Page {
 											items.clone().into_iter().map(|cluster| {
 												page!({
 													div {
-														class: "rounded-md border border-cloud-200 bg-white px-3 py-2 shadow-[0_1px_0_rgba(17,16,19,0.03)]",
+														class: STYLES.cluster_card(),
 														div {
-															class: "flex items-start justify-between gap-3",
+															class: STYLES.cluster_card_head(),
 															div {
-																class: "min-w-0",
+																class: STYLES.cluster_card_body(),
 																div {
-																	class: "truncate font-semibold text-ink-950",
+																	class: STYLES.cluster_name(),
 																	{
 																		cluster.name.clone()
 																	}
 																}
 																div {
-																	class: "mt-0.5 font-mono text-xs text-ink-600",
+																	class: STYLES.cluster_id(),
 																	{
 																		format!("id {}", cluster.id)
 																	}
@@ -782,7 +788,7 @@ pub fn github_repositories_page() -> Page {
 															}
 														}
 														div {
-															class: "font-mono text-xs text-cloud-500",
+															class: STYLES.cluster_url(),
 															{
 																cluster.api_url.clone()
 															}
@@ -855,6 +861,11 @@ mod tests {
 		let html = refetch_notice(false, Some(error), "repositories").render_to_string();
 
 		// Assert
+		assert!(html.contains(&format!(
+			"<div class=\"{} {}\">",
+			STYLES.refetch_notice().as_str(),
+			STYLES.refetch_warning().as_str(),
+		)));
 		assert!(html.contains("Refresh failed: GitHub refresh timed out"));
 	}
 
@@ -864,6 +875,11 @@ mod tests {
 		let html = refetch_notice(true, None, "repositories").render_to_string();
 
 		// Assert
+		assert!(html.contains(&format!(
+			"<div class=\"{} {}\">",
+			STYLES.refetch_notice().as_str(),
+			STYLES.refetch_pending().as_str(),
+		)));
 		assert!(html.contains("Refreshing repositories..."));
 	}
 
