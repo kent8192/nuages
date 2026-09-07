@@ -1,15 +1,16 @@
 //! Dashboard shell layout with header, sidebar, and route outlet.
 
+use std::time::Duration;
+
 use reinhardt::pages::component;
 use reinhardt::pages::event::ClickEvent;
 use reinhardt::pages::page;
 use reinhardt::pages::prelude::{
-	Action, ClassToken, Outlet, Page, QueryOptions, QuerySnapshot, QueryStatus, use_action,
-	use_query,
+	ClassToken, NavigationContext, NavigationDecision, NavigationGuardError, Outlet, Page,
+	QueryOptions, QuerySnapshot, QueryStatus, use_query, use_server_mutation,
 };
 use reinhardt::pages::server_fn::ServerFnError;
 
-#[cfg(wasm)]
 use crate::apps::auth::server_fn::logout::logout;
 use crate::apps::auth::server_fn::me::me;
 use crate::apps::dashboard::client::style::STYLES;
@@ -25,12 +26,17 @@ enum DashboardGate {
 	Failed(String),
 }
 
+const SESSION_REVALIDATION_INTERVAL: Duration = Duration::from_secs(60);
+
 fn dashboard_gate(snapshot: QuerySnapshot<UserInfo, ServerFnError>) -> DashboardGate {
 	if let Some(error) = snapshot.error.or(snapshot.refetch_error) {
 		return match error.status() {
 			Some(401 | 403) => DashboardGate::LoginRequired,
 			_ => DashboardGate::Failed(error.user_message().to_string()),
 		};
+	}
+	if snapshot.is_fetching || snapshot.is_stale {
+		return DashboardGate::Waiting;
 	}
 
 	match snapshot.status {
@@ -57,14 +63,45 @@ fn route_is_active(current_path: &str, route_href: &str) -> bool {
 		== route_href
 }
 
-#[cfg(wasm)]
-async fn end_dashboard_session() -> Result<bool, ServerFnError> {
-	logout().await
+fn dashboard_navigation_decision(
+	result: Result<(), ServerFnError>,
+) -> Result<NavigationDecision, NavigationGuardError> {
+	match result {
+		Ok(()) => Ok(NavigationDecision::Allow),
+		Err(error) => match error.status() {
+			Some(401) => Ok(NavigationDecision::Redirect {
+				location: route_href("auth:login_page", "/login"),
+				replace: true,
+			}),
+			Some(403) => Ok(NavigationDecision::Forbidden),
+			_ => Err(NavigationGuardError::from_diagnostic(
+				error.user_message().to_owned(),
+				error.status(),
+				error,
+			)),
+		},
+	}
 }
 
-#[cfg(not(wasm))]
-async fn end_dashboard_session() -> Result<bool, ServerFnError> {
-	Ok(true)
+/// Verify the browser session before a protected layout or child is mounted.
+///
+/// The static dashboard shell authenticates in the browser. Native route
+/// execution has no browser cookie context and therefore fails closed.
+#[reinhardt::pages::navigation_guard]
+pub(crate) async fn require_dashboard_session(
+	_context: NavigationContext,
+) -> Result<NavigationDecision, NavigationGuardError> {
+	#[cfg(wasm)]
+	{
+		dashboard_navigation_decision(me().await.map(|_| ()))
+	}
+	#[cfg(not(wasm))]
+	{
+		dashboard_navigation_decision(Err(ServerFnError::auth(
+			401,
+			"A browser session is required",
+		)))
+	}
 }
 
 #[cfg(wasm)]
@@ -82,30 +119,44 @@ fn replace_document(_location: &str) -> Result<(), ServerFnError> {
 }
 
 /// Render the shared dashboard chrome around its active child route.
-#[reinhardt::pages::layout("/", name = "dashboard:layout")]
+#[reinhardt::pages::layout(
+	"/",
+	name = "dashboard:layout",
+	navigation_guard = require_dashboard_session,
+)]
 pub fn dashboard_layout(outlet: Outlet) -> Page {
 	let login_href = route_href("auth:login_page", "/login");
-	let logout_action: Action<bool, ServerFnError> = use_action({
+	let logout_action = use_server_mutation({
 		let login_href = login_href.clone();
-		move |_: ()| {
+		let logout = logout::mutation();
+		move |()| {
 			let login_href = login_href.clone();
+			let request = logout(());
 			async move {
-				let logged_out = end_dashboard_session().await?;
+				let logged_out = request.await?;
+				reinhardt::pages::auth::auth_state().logout();
+				reinhardt::pages::auth::invalidate_authentication();
 				replace_document(&login_href)?;
-				Ok(logged_out)
+				Ok::<_, ServerFnError>(logged_out)
 			}
 		}
-	});
+	})
+	.build();
 	let current_path = reinhardt::pages::app::try_with_spa_router(|router| *router.current_path());
 	let account_href = route_href("auth:account_page", "/account");
 	let home_href = route_href("dashboard:home", "/");
 	let clusters_href = route_href("clusters:list", "/clusters");
 	let deployments_href = route_href("deployments:list", "/deployments");
 	let github_href = route_href("github:repositories", "/github");
-	let session = use_query(me::query(), QueryOptions::new().enabled(cfg!(wasm)));
+	let session = use_query(
+		me::query(),
+		QueryOptions::new()
+			.enabled(cfg!(wasm))
+			.refetch_interval(SESSION_REVALIDATION_INTERVAL),
+	);
 
 	page!({
-		{
+		div { {
 			let gate = match self::dashboard_gate(session.snapshot()) {
 				DashboardGate::LoginRequired if replace_document(&login_href).is_err() => {
 					DashboardGate::Failed("Unable to redirect to sign in.".to_string())
@@ -113,18 +164,35 @@ pub fn dashboard_layout(outlet: Outlet) -> Page {
 				gate => gate,
 			};
 			match gate {
-				DashboardGate::Waiting | DashboardGate::LoginRequired => Page::Empty,
-				DashboardGate::Failed(message) => page!({
+				DashboardGate::Authenticated => Page::Empty,
+				gate => {
+					let (title, message, role) = match gate {
+						DashboardGate::Waiting => (
+							"Verifying dashboard session",
+							"Please wait while your session is checked.".to_string(),
+							"status",
+						),
+						DashboardGate::LoginRequired => (
+							"Redirecting to sign in",
+							"Your dashboard session is no longer available.".to_string(),
+							"status",
+						),
+						DashboardGate::Failed(message) => {
+							("Dashboard unavailable", message, "alert")
+						}
+						DashboardGate::Authenticated => unreachable!(),
+					};
+					page!({
 					main {
 						class: SHARED_STYLES.app(),
-						role: "alert",
+						role: role,
 						div {
 							class: SHARED_STYLES.shell(),
 							section {
 								class: SHARED_STYLES.panel_pad(),
 								h1 {
 									class: SHARED_STYLES.title(),
-									"Dashboard unavailable"
+									{ title }
 								}
 								p {
 									class: SHARED_STYLES.muted(),
@@ -133,126 +201,149 @@ pub fn dashboard_layout(outlet: Outlet) -> Page {
 							}
 						}
 					}
-				}),
-				DashboardGate::Authenticated => {
-					let current_path = current_path
-						.map(|path| path.get())
-						.unwrap_or_else(|| "/".to_string());
-					let outlet = outlet.clone();
-					let account_href = account_href.clone();
-					let home_href = home_href.clone();
-					let clusters_href = clusters_href.clone();
-					let deployments_href = deployments_href.clone();
-					let github_href = github_href.clone();
-					let logout_action = logout_action;
-					page!({
-						div {
-							class: SHARED_STYLES.app() + STYLES.dashboard_app(),
-							header {
-								class: STYLES.dashboard_header(),
-								div {
-									class: STYLES.header_brand(),
-									span {
-										class: STYLES.brand_mark(),
-										"RC"
-									}
-									div {
-										span {
-											class: STYLES.brand_name(),
-											"Reinhardt Cloud"
-										}
-										span {
-											class: STYLES.brand_subtitle(),
-											"Deploy control"
-										}
-									}
-								}
-								div {
-									class: STYLES.header_actions(),
-									span {
-										class: STYLES.header_health(),
-										"Healthy"
-									}
-									a {
-										href: account_href.clone(),
-										class: SHARED_STYLES.link() + STYLES.header_action(),
-										"Account"
-									}
-									button {
-										type: "button",
-										class: SHARED_STYLES.link() + STYLES.header_action(),
-										@click: move |event: ClickEvent| {
-											event.prevent_default();
-											logout_action.dispatch(());
-										},
-										"Logout"
-									}
-								}
-							}
-							div {
-								class: STYLES.dashboard_body(),
-								nav {
-									class: STYLES.sidebar(),
-									div {
-										class: STYLES.organization(),
-										p {
-											class: STYLES.organization_label(),
-											"Organization"
-										}
-										p {
-											class: STYLES.organization_name(),
-											"current workspace"
-										}
-									}
-									ul {
-										class: STYLES.navigation_list(),
-										li {
-											a {
-												href: home_href,
-												class: self::nav_item_class(self::route_is_active(&current_path, &home_href)),
-												"Overview"
-											}
-										}
-										li {
-											a {
-												href: clusters_href,
-												class: self::nav_item_class(self::route_is_active(&current_path, &clusters_href)),
-												"Clusters"
-											}
-										}
-										li {
-											a {
-												href: deployments_href,
-												class: self::nav_item_class(self::route_is_active(&current_path, &deployments_href)),
-												"Deployments"
-											}
-										}
-										li {
-											a {
-												href: github_href,
-												class: self::nav_item_class(self::route_is_active(&current_path, &github_href)),
-												"GitHub"
-											}
-										}
-										li {
-											a {
-												href: account_href,
-												class: self::nav_item_class(self::route_is_active(&current_path, &account_href)),
-												"Account"
-											}
-										}
-									}
-								}
-								main {
-									class: STYLES.dashboard_main(),
-									{ outlet }
-								}
-							}
-						}
 					})
 				}
 			}
-		}
+		}{
+				// Update visibility without rebuilding the active route's form controls.
+				let shell_session = session.clone();
+				Page::element("div")
+					.attr("class", (SHARED_STYLES.app() + STYLES.dashboard_app()).as_str().to_owned())
+					.reactive_attr("hidden", move || {
+						(!matches!(
+							self::dashboard_gate(shell_session.snapshot()),
+							DashboardGate::Authenticated
+						)).then_some("hidden".into())
+					})
+					.child(page!({
+				header {
+					class: STYLES.dashboard_header(),
+					div {
+						class: STYLES.header_brand(),
+						span {
+							class: STYLES.brand_mark(),
+							"RC"
+						}
+						div {
+							span {
+								class: STYLES.brand_name(),
+								"Reinhardt Cloud"
+							}
+							span {
+								class: STYLES.brand_subtitle(),
+								"Deploy control"
+							}
+						}
+					}
+					div {
+						class: STYLES.header_actions(),
+						span {
+							class: STYLES.header_health(),
+							"Healthy"
+						}
+						a {
+							href: account_href.clone(),
+							class: SHARED_STYLES.link() + STYLES.header_action(),
+							"Account"
+						}
+						button {
+							type: "button",
+							class: SHARED_STYLES.link() + STYLES.header_action(),
+							disabled: logout_action.is_pending(),
+							@click: move |event: ClickEvent| {
+								event.prevent_default();
+								logout_action.dispatch(());
+							},
+							"Logout"
+						}
+					}
+				}
+				div {
+					class: STYLES.dashboard_body(),
+					nav {
+						class: STYLES.sidebar(),
+						div {
+							class: STYLES.organization(),
+							p {
+								class: STYLES.organization_label(),
+								"Organization"
+							}
+							p {
+								class: STYLES.organization_name(),
+								"current workspace"
+							}
+						}
+						ul {
+							class: STYLES.navigation_list(),
+							li {
+								a {
+									href: home_href.clone(),
+									class: {
+										let path = current_path
+											.map(|path| path.get())
+											.unwrap_or_else(|| "/".to_string());
+										self::nav_item_class(self::route_is_active(&path, &home_href))
+									},
+									"Overview"
+								}
+							}
+							li {
+								a {
+									href: clusters_href.clone(),
+									class: {
+										let path = current_path
+											.map(|path| path.get())
+											.unwrap_or_else(|| "/".to_string());
+										self::nav_item_class(self::route_is_active(&path, &clusters_href))
+									},
+									"Clusters"
+								}
+							}
+							li {
+								a {
+									href: deployments_href.clone(),
+									class: {
+										let path = current_path
+											.map(|path| path.get())
+											.unwrap_or_else(|| "/".to_string());
+										self::nav_item_class(self::route_is_active(&path, &deployments_href))
+									},
+									"Deployments"
+								}
+							}
+							li {
+								a {
+									href: github_href.clone(),
+									class: {
+										let path = current_path
+											.map(|path| path.get())
+											.unwrap_or_else(|| "/".to_string());
+										self::nav_item_class(self::route_is_active(&path, &github_href))
+									},
+									"GitHub"
+								}
+							}
+							li {
+								a {
+									href: account_href.clone(),
+									class: {
+										let path = current_path
+											.map(|path| path.get())
+											.unwrap_or_else(|| "/".to_string());
+										self::nav_item_class(self::route_is_active(&path, &account_href))
+									},
+									"Account"
+								}
+							}
+						}
+					}
+					main {
+						class: STYLES.dashboard_main(),
+						{ outlet }
+					}
+				}
+					}))
+			} }
 	})
 }
 
@@ -388,7 +479,7 @@ pub fn dashboard_shell() -> Page {
 
 #[cfg(test)]
 mod tests {
-	use reinhardt::pages::prelude::{QuerySnapshot, QueryStatus};
+	use reinhardt::pages::prelude::{NavigationDecision, QuerySnapshot, QueryStatus};
 	use reinhardt::pages::server_fn::ServerFnError;
 	use rstest::rstest;
 
@@ -414,6 +505,46 @@ mod tests {
 			is_fetching: status == QueryStatus::Pending,
 			is_stale: false,
 		}
+	}
+
+	#[rstest]
+	#[case::authenticated(Ok(()), NavigationDecision::Allow)]
+	#[case::anonymous(
+		Err(ServerFnError::auth(401, "Session expired")),
+		NavigationDecision::Redirect { location: "/login".to_owned(), replace: true }
+	)]
+	#[case::forbidden(
+		Err(ServerFnError::auth(403, "Account disabled")),
+		NavigationDecision::Forbidden
+	)]
+	fn navigation_checks_session_before_mounting(
+		#[case] result: Result<(), ServerFnError>,
+		#[case] expected: NavigationDecision,
+	) {
+		// Arrange + Act
+		let decision = super::dashboard_navigation_decision(result);
+
+		// Assert
+		assert_eq!(decision, Ok(expected));
+	}
+
+	#[rstest]
+	fn navigation_preserves_safe_service_errors() {
+		// Arrange
+		let result = Err(ServerFnError::server(
+			503,
+			"Dashboard is temporarily unavailable.",
+		));
+
+		// Act
+		let error = super::dashboard_navigation_decision(result).unwrap_err();
+
+		// Assert
+		assert_eq!(error.status(), Some(503));
+		assert_eq!(
+			error.public_message(),
+			"Dashboard is temporarily unavailable."
+		);
 	}
 
 	#[rstest]
@@ -484,6 +615,25 @@ mod tests {
 
 		// Assert
 		assert_eq!(actual, expected);
+	}
+
+	#[rstest]
+	#[case::background_refetch(true, false)]
+	#[case::stale_cached_user(false, true)]
+	fn session_gate_hides_cached_user_until_revalidation_finishes(
+		#[case] is_fetching: bool,
+		#[case] is_stale: bool,
+	) {
+		// Arrange
+		let mut snapshot = session_snapshot(QueryStatus::Success, true, None, None);
+		snapshot.is_fetching = is_fetching;
+		snapshot.is_stale = is_stale;
+
+		// Act
+		let actual = super::dashboard_gate(snapshot);
+
+		// Assert
+		assert_eq!(actual, DashboardGate::Waiting);
 	}
 
 	#[rstest]

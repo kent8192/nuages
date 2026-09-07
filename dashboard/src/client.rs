@@ -1,17 +1,12 @@
 //! WASM client entry point for the Reinhardt Cloud dashboard.
 //!
-//! Bootstraps the SPA via [`reinhardt::pages::ClientLauncher`], which
-//! handles router initialization, history listener wiring, the DOM
-//! mount on `#app`, re-mount on every
-//! [`reinhardt::pages::Router::on_navigate`] event, and built-in SPA
-//! link interception. Dashboard-specific concerns (app state init,
-//! toast container) plug in through the launcher lifecycle hooks
-//! (`before_launch`, `on_path`).
-//!
-//! Re-mount on navigation went through a reactive `Effect` until
-//! upstream PR kent8192/reinhardt-web#4114 replaced the Effect with a
-//! direct `Router::on_navigate` observer. Both APIs flow through the
-//! same `on_path` hook here, so this module did not need to change.
+//! Bootstraps the SPA via [`reinhardt::pages::ClientLauncher`], which owns
+//! client routing, browser history, link interception, and mounting on `#app`.
+//! Protected routes are prepared through their asynchronous layout guard before
+//! their content mounts. Path hooks run after the destination commits, so
+//! notification connections start only after the protected route is admitted.
+//! Application state initialization runs in `before_launch`; the toast portal
+//! and path-specific notifications use `on_path`.
 
 pub mod router;
 
@@ -50,8 +45,8 @@ mod wasm_entry {
 		// is enabled; calling set_once twice is harmless.
 		console_error_panic_hook::set_once();
 
-		// Delegate router init, history listener, DOM mount, SPA link
-		// interception, and re-mount on navigate to ClientLauncher.
+		// Delegate routing, guarded route preparation, browser history,
+		// link interception, and DOM mounting to ClientLauncher.
 		// `router_client` consumes the one dashboard `ClientRouter`; route
 		// reversal reads that active SPA router, so no separate registration
 		// is needed.

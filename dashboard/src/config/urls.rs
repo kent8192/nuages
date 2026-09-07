@@ -39,19 +39,10 @@ use reinhardt::admin::{admin_routes_with_di, admin_static_routes};
 #[cfg(native)]
 use reinhardt::di::{Depends, DiRegistrationList, injectable};
 #[cfg(native)]
-use reinhardt::pages::router::ClientRouter;
-#[cfg(native)]
 use reinhardt::pages::server_fn::ServerFnRouterExt;
 use reinhardt::routes;
-use reinhardt::urls::prelude::UnifiedRouter;
-
 #[cfg(native)]
-type DashboardUnifiedRouter = UnifiedRouter<ClientRouter>;
-// The `#[routes]` macro consumes this wasm-only signature while generating
-// route resolvers, so rustc does not see a direct use after expansion.
-#[cfg(not(native))]
-#[allow(dead_code)]
-type DashboardUnifiedRouter = UnifiedRouter;
+use reinhardt::urls::prelude::UnifiedRouter;
 
 #[cfg(not(target_arch = "wasm32"))]
 use reinhardt::{WebSocketRoute, WebSocketRouter, register_websocket_router};
@@ -231,21 +222,21 @@ async fn create_router_infrastructure(
 
 /// Entry point for the `#[routes]` macro (called by the framework).
 ///
-/// On native, the `#[inject]` parameter resolves the Send-safe router
-/// infrastructure. The client-enabled `UnifiedRouter` is intentionally built
-/// afterwards because its reactive client state is not Send or Sync.
+/// On native, the `#[inject]` parameter resolves the router infrastructure.
+/// `UnifiedRouter` stores native routes; its client declaration is type-checked
+/// without constructing or registering client state.
 ///
 /// On wasm the function reduces to a stub that returns an empty
 /// `UnifiedRouter`. The body is never executed in a browser context —
 /// the macro only needs the function to exist so it can emit URL
 /// resolver support adjacent to it.
 #[routes]
-#[allow(private_interfaces)] // DashboardRouter is pub(crate) by design; #[routes] macro requires pub fn
+#[allow(private_interfaces)] // RouterInfrastructure is pub(crate); #[routes] requires a public function.
 pub async fn routes(
 	#[cfg(native)]
 	#[inject]
 	infra: Depends<RouterInfrastructure>,
-) -> DashboardUnifiedRouter {
+) -> UnifiedRouter {
 	#[cfg(native)]
 	{
 		let infra = infra
@@ -277,23 +268,21 @@ fn initialize_dashboard_static_resolver() {
 /// The `#[routes]` inventory wrapper attaches its own injection context after
 /// this builder returns. Direct callers must attach their context themselves.
 #[cfg(native)]
-pub(crate) fn build_dashboard_router(infra: RouterInfrastructure) -> DashboardUnifiedRouter {
+pub(crate) fn build_dashboard_router(infra: RouterInfrastructure) -> UnifiedRouter {
 	UnifiedRouter::new()
-			// App routers contribute server routes only. The complete client tree
-			// is attached below so layout nesting has one source of truth.
-			.client(|c| c)
+			// App routers contribute native server routes. The client declaration
+			// below type-checks the route tree owned by the WASM launcher.
 			// Admin panel
 			.mount("/admin/", infra.admin_router)
 			.mount("/static/admin/", admin_static_routes())
 			.with_prefix("/api/")
 			.with_di_registrations(infra.admin_di)
 			// Per-app unified routers carry server endpoints under the given
-			// prefix. SPA route registration is centralized below.
+			// prefix. The WASM launcher owns SPA route registration.
 			.mount_unified("/", dashboard_urls::url_patterns())
 			.mount_unified("/auth/", auth_urls::url_patterns())
 			// Cluster and deployment data mutations are exposed through
-			// registered server functions; the unified app mounts only
-			// contribute SPA client routes.
+			// registered server functions and the deployment CLI endpoint.
 			.mount_unified("/", cluster_urls::url_patterns())
 			.mount_unified("/", deployment_urls::url_patterns())
 			.mount_unified("/github/", github_urls::url_patterns())

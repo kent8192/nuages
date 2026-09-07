@@ -14,8 +14,8 @@ use crate::shared::client::pages::not_found::not_found_page;
 
 /// Add the dashboard's complete route tree to an existing client router.
 ///
-/// The native project router and the WASM launcher both use this function, so
-/// named route reversal and layout nesting stay identical on both targets.
+/// The WASM launcher executes this declaration. Native tests construct it
+/// explicitly; the native project router only type-checks its client builder.
 pub(crate) fn configure_routes(router: ClientRouter) -> ClientRouter {
 	router.not_found(not_found_page).routes(|routes| {
 		routes
@@ -44,7 +44,12 @@ pub fn init_router() -> ClientRouter {
 mod tests {
 	use rstest::rstest;
 
-	use super::*;
+	use reinhardt::pages::NavigationGuard;
+	use reinhardt::pages::reactive::ReactiveScope;
+
+	use crate::apps::dashboard::client::layout::require_dashboard_session;
+
+	use super::{ClientRouter, configure_routes};
 
 	#[rstest]
 	#[case::home("dashboard:home", "/")]
@@ -55,14 +60,16 @@ mod tests {
 	#[case::deployments("deployments:list", "/deployments")]
 	#[case::github("github:repositories", "/github")]
 	fn routes_preserve_public_paths(#[case] name: &str, #[case] expected: &str) {
-		// Arrange
-		let router = configure_routes(ClientRouter::new());
+		ReactiveScope::run(|| {
+			// Arrange
+			let router = configure_routes(ClientRouter::new());
 
-		// Act
-		let path = router.reverse(name, &[]);
+			// Act
+			let path = router.reverse(name, &[]);
 
-		// Assert
-		assert_eq!(path, Ok(expected.to_string()));
+			// Assert
+			assert_eq!(path, Ok(expected.to_string()));
+		});
 	}
 
 	#[rstest]
@@ -72,13 +79,53 @@ mod tests {
 	#[case::deployments("/deployments")]
 	#[case::github("/github")]
 	fn authenticated_routes_share_dashboard_layout(#[case] path: &str) {
+		ReactiveScope::run(|| {
+			// Arrange
+			let router = configure_routes(ClientRouter::new());
+
+			// Act
+			let matched = router.match_tree(path);
+
+			// Assert
+			let matched = matched.expect("protected route is registered");
+			assert_eq!(matched.layouts().len(), 1);
+			assert_eq!(
+				matched.navigation_guard_ids(),
+				[require_dashboard_session::marker::ID],
+			);
+		});
+	}
+
+	#[rstest]
+	#[case::login("/login")]
+	#[case::register("/register")]
+	fn public_routes_do_not_require_a_dashboard_session(#[case] path: &str) {
+		ReactiveScope::run(|| {
+			// Arrange
+			let router = configure_routes(ClientRouter::new());
+
+			// Act
+			let matched = router.match_tree(path).expect("public route is registered");
+
+			// Assert
+			assert_eq!(matched.navigation_guard_ids(), []);
+		});
+	}
+	#[cfg(native)]
+	#[rstest]
+	#[tokio::test]
+	async fn native_protected_route_requires_a_browser_session() {
 		// Arrange
-		let router = configure_routes(ClientRouter::new());
+		let scope = ReactiveScope::new();
+		let router = scope.enter(super::init_router);
+		let mut renderer = reinhardt::pages::SsrRenderer::new();
 
 		// Act
-		let matched = router.match_tree(path);
+		let output = renderer.render_route_to_string(&router, "/clusters").await;
 
 		// Assert
-		assert_eq!(matched.map(|tree| tree.layouts().len()), Some(1));
+		assert_eq!(output.status, 302);
+		assert_eq!(output.html, "");
+		assert_eq!(renderer.route_redirect_location(), Some("/login"));
 	}
 }

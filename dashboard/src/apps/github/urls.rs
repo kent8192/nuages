@@ -3,29 +3,19 @@
 use reinhardt::urls::prelude::UnifiedRouter;
 
 #[cfg(server)]
-use reinhardt::pages::router::ClientRouter;
-
-#[cfg(server)]
-type AppRouter = UnifiedRouter<ClientRouter>;
-#[cfg(not(server))]
-type AppRouter = UnifiedRouter;
-
-#[cfg(server)]
 use crate::apps::github::server_urls;
 
 #[cfg(server)]
-pub fn url_patterns() -> AppRouter {
-	UnifiedRouter::new()
-		.server(|server| {
-			server
-				.endpoint(server_urls::github_setup)
-				.endpoint(server_urls::github_webhook)
-		})
-		.client(|client| client)
+pub fn url_patterns() -> UnifiedRouter {
+	UnifiedRouter::new().server(|server| {
+		server
+			.endpoint(server_urls::github_setup)
+			.endpoint(server_urls::github_webhook)
+	})
 }
 
 #[cfg(not(server))]
-pub fn url_patterns() -> AppRouter {
+pub fn url_patterns() -> UnifiedRouter {
 	UnifiedRouter::new()
 }
 

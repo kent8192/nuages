@@ -10,23 +10,13 @@ pub mod ws_urls;
 
 use reinhardt::urls::prelude::UnifiedRouter;
 
-#[cfg(server)]
-use reinhardt::pages::router::ClientRouter;
-
-#[cfg(server)]
-type AppRouter = UnifiedRouter<ClientRouter>;
-#[cfg(not(server))]
-type AppRouter = UnifiedRouter;
-
 /// Returns the unified URL patterns for the dashboard app.
 #[cfg(server)]
-pub fn url_patterns() -> AppRouter {
-	UnifiedRouter::new()
-		.client(|client| client)
-		.websocket(|websocket| websocket.mount("/", ws_urls::ws_url_patterns()))
+pub fn url_patterns() -> UnifiedRouter {
+	UnifiedRouter::new().websocket(|websocket| websocket.mount("/", ws_urls::ws_url_patterns()))
 }
 
 #[cfg(not(server))]
-pub fn url_patterns() -> AppRouter {
+pub fn url_patterns() -> UnifiedRouter {
 	UnifiedRouter::new()
 }

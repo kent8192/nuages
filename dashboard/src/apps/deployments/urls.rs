@@ -6,26 +6,16 @@ pub mod ws_urls;
 use reinhardt::urls::prelude::UnifiedRouter;
 
 #[cfg(server)]
-use reinhardt::pages::router::ClientRouter;
-
-#[cfg(server)]
-type AppRouter = UnifiedRouter<ClientRouter>;
-#[cfg(not(server))]
-type AppRouter = UnifiedRouter;
-
-#[cfg(server)]
 use crate::apps::deployments::server_urls;
 
 /// Returns the unified URL patterns for the deployments app.
 #[cfg(server)]
-pub fn url_patterns() -> AppRouter {
-	UnifiedRouter::new()
-		.server(|server| server.endpoint(server_urls::cli_deploy))
-		.client(|client| client)
+pub fn url_patterns() -> UnifiedRouter {
+	UnifiedRouter::new().server(|server| server.endpoint(server_urls::cli_deploy))
 }
 
 #[cfg(not(server))]
-pub fn url_patterns() -> AppRouter {
+pub fn url_patterns() -> UnifiedRouter {
 	UnifiedRouter::new()
 }
 

@@ -8,18 +8,10 @@ pub mod ws_urls;
 use reinhardt::urls::prelude::UnifiedRouter;
 
 #[cfg(server)]
-use reinhardt::pages::router::ClientRouter;
-
-#[cfg(server)]
 use crate::apps::auth::server_urls;
 
-#[cfg(server)]
-type AppRouter = UnifiedRouter<ClientRouter>;
-#[cfg(not(server))]
-type AppRouter = UnifiedRouter;
-
 /// Returns the unified URL patterns for the auth app.
-pub fn url_patterns() -> AppRouter {
+pub fn url_patterns() -> UnifiedRouter {
 	let router = UnifiedRouter::new();
 	#[cfg(server)]
 	let router = router.server(|s| {
@@ -28,8 +20,6 @@ pub fn url_patterns() -> AppRouter {
 			.endpoint(server_urls::oauth_callback)
 			.endpoint(server_urls::api_me)
 	});
-	#[cfg(client)]
-	let router = router.client(|client| client);
 	router
 }
 
