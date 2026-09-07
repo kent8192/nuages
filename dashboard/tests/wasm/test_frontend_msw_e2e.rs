@@ -11,10 +11,12 @@ use std::rc::Rc;
 use reinhardt::pages::ClientLauncher;
 use reinhardt::test::fixtures::wasm::{msw_worker, screen, wasm_test_env};
 use reinhardt::test::wasm::{UserEvent, wait_for};
+use reinhardt_cloud_dashboard::apps::auth::server_fn::me::me;
 use reinhardt_cloud_dashboard::apps::clusters::server_fn::{
 	ClusterInfo, ClusterTokenInfo, create_cluster_for_current_org, list_clusters_for_current_org,
 };
 use reinhardt_cloud_dashboard::client::router::init_router;
+use reinhardt_cloud_dashboard::shared::UserInfo;
 use reinhardt_cloud_dashboard::shared::client::state;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
@@ -72,6 +74,13 @@ async fn clusters_page_loads_and_submits_with_msw() {
 	let worker = msw_worker().await;
 	let create_call_count = Rc::new(Cell::new(0));
 	let create_call_count_for_handler = Rc::clone(&create_call_count);
+	worker.handle_server_fn::<me::marker>(|_| {
+		Ok(UserInfo {
+			id: "550e8400-e29b-41d4-a716-446655440000".to_owned(),
+			username: "alice".to_owned(),
+			email: "alice@example.com".to_owned(),
+		})
+	});
 
 	worker.handle_server_fn::<list_clusters_for_current_org::marker>(|_args| {
 		Ok(vec![cluster_fixture()])
@@ -127,17 +136,56 @@ async fn clusters_page_loads_and_submits_with_msw() {
 		.dyn_into()
 		.expect("cluster name input");
 
-	// Act
-	UserEvent::type_text(&name_input, "staging-eu");
-
-	// Typing re-renders the reactive form, so acquire the next control from
-	// the current DOM rather than dispatching to the detached input node.
 	let api_url_input: HtmlInputElement = screen
 		.get_by_label_text("API URL")
 		.get()
 		.dyn_into()
 		.expect("cluster API URL input");
-	UserEvent::type_text(&api_url_input, "https://staging.example.com:6443");
+	let name_for_visibility = name_input.clone();
+	wait_for(move || {
+		name_for_visibility
+			.closest("[hidden]")
+			.expect("hidden ancestor")
+			.is_none()
+	})
+	.with_description("authenticated dashboard shell is visible")
+	.await
+	.expect("session verification should reveal the cluster form");
+
+	// Act
+	name_input.focus().expect("focus cluster name");
+	UserEvent::type_text(&name_input, "staging-eu");
+	assert!(
+		name_input.is_same_node(
+			screen
+				.get_by_label_text("Name")
+				.query()
+				.as_ref()
+				.map(|element| element.as_ref())
+		)
+	);
+	assert!(
+		name_input.is_same_node(
+			web_sys::window()
+				.unwrap()
+				.document()
+				.unwrap()
+				.active_element()
+				.as_ref()
+				.map(|element| element.as_ref())
+		)
+	);
+	api_url_input.focus().expect("focus cluster API URL");
+	UserEvent::type_text(&api_url_input, "not-a-url");
+	assert!(
+		api_url_input.is_same_node(
+			screen
+				.get_by_label_text("API URL")
+				.query()
+				.as_ref()
+				.map(|element| element.as_ref())
+		)
+	);
 
 	let submit = screen
 		.get_by_role_with_name("button", "Register cluster")
@@ -147,6 +195,14 @@ async fn clusters_page_loads_and_submits_with_msw() {
 		.expect("cluster create form parent")
 		.dyn_into()
 		.expect("cluster create form");
+	assert_eq!(api_url_input.type_(), "url");
+	assert!(!api_url_input.check_validity());
+	create_form
+		.request_submit()
+		.expect("attempt invalid URL submit");
+	assert_eq!(create_call_count.get(), 0);
+	UserEvent::type_text(&api_url_input, "https://staging.example.com:6443");
+	assert!(api_url_input.check_validity());
 	create_form
 		.request_submit()
 		.expect("cluster create form should dispatch a submit event");
@@ -160,6 +216,19 @@ async fn clusters_page_loads_and_submits_with_msw() {
 	worker
 		.calls_to_server_fn::<create_cluster_for_current_org::marker>()
 		.assert_count(1);
+	let screen_for_reset = screen.clone();
+	wait_for(move || {
+		["Name", "API URL"].iter().all(|label| {
+			screen_for_reset
+				.get_by_label_text(label)
+				.query()
+				.and_then(|element| element.dyn_into::<HtmlInputElement>().ok())
+				.is_some_and(|input| input.value().is_empty())
+		})
+	})
+	.with_description("generated form reset synchronizes bound controls")
+	.await
+	.expect("cluster form should reset after successful mutation");
 	let name_after_reset: HtmlInputElement = screen
 		.get_by_label_text("Name")
 		.get()

@@ -1,9 +1,11 @@
 //! Cluster ORM model.
 
+#[cfg(native)]
 use reinhardt::db::associations::ForeignKeyField;
-use reinhardt::prelude::*;
+use reinhardt::model;
 use serde::{Deserialize, Serialize};
 
+#[cfg(native)]
 use crate::apps::organizations::models::Organization;
 
 /// Kubernetes cluster registered with the Reinhardt Cloud PaaS.
@@ -16,7 +18,7 @@ use crate::apps::organizations::models::Organization;
 	app_label = "clusters",
 	table_name = "clusters",
 	unique_together = ("organization_id", "name"),
-	form = true
+	form(name = ClusterCreateForm, fields(name, api_url))
 )]
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Cluster {
@@ -31,10 +33,12 @@ pub struct Cluster {
 
 	/// Cluster display name
 	#[field(min_length = 1, max_length = 63)]
+	#[form(trim)]
 	pub name: String,
 
 	/// Kubernetes API server URL
 	#[field(url = true, max_length = 2048)]
+	#[form(trim)]
 	pub api_url: String,
 
 	/// Whether the cluster is active and accepting deployments

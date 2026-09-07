@@ -2,13 +2,14 @@
 
 use reinhardt::pages::component;
 use reinhardt::pages::component::Page;
-use reinhardt::pages::event::{InputEvent, SubmitEvent};
+use reinhardt::pages::event::SubmitEvent;
 use reinhardt::pages::page;
 #[cfg(test)]
 use reinhardt::pages::prelude::FieldError;
+#[cfg(all(test, native))]
+use reinhardt::pages::prelude::UseFormAsyncSubmitOutcome;
 use reinhardt::pages::prelude::{
-	Action, Callback, FormState, Signal, UseFormAsyncSubmitOutcome, use_action, use_callback,
-	use_form, use_router,
+	Callback, FormState, UseFormReturn, use_callback, use_form, use_router,
 };
 use reinhardt::pages::reactive::ExplicitDeps;
 use reinhardt::pages::server_fn::ServerFnError;
@@ -20,19 +21,13 @@ use crate::apps::auth::serializers::RegisterRequest;
 use crate::apps::auth::serializers::register::{
 	RegisterRequestClientForm, RegisterRequestClientFormField,
 };
-use crate::shared::AuthResponse;
 use crate::shared::client::routes::route_href;
 use crate::shared::client::style::STYLES as SHARED_STYLES;
 
 #[derive(Clone)]
 struct RegisterFormView {
-	state: FormState<RegisterRequestClientFormField>,
-	action: Action<UseFormAsyncSubmitOutcome<AuthResponse>, ServerFnError>,
-	username: Signal<String>,
-	email: Signal<String>,
-	password: Signal<String>,
-	email_input: Callback<InputEvent, ()>,
-	password_input: Callback<InputEvent, ()>,
+	runtime: UseFormReturn<RegisterRequestClientForm>,
+	submit: Callback<SubmitEvent, ()>,
 }
 
 fn register_field_error(
@@ -82,26 +77,17 @@ fn register_form_error(state: FormState<RegisterRequestClientFormField>) -> Page
 }
 
 fn render_register_form(view: RegisterFormView) -> Page {
-	let submit = use_callback(
-		move |event: SubmitEvent| {
-			event.prevent_default();
-			view.action.dispatch(());
-		},
-		ExplicitDeps::from_node_ids([]),
-	);
-	let form_error = register_form_error(view.state.clone());
+	let state = view.runtime.form_state();
+	let form_error = register_form_error(state.clone());
 	let username_error =
-		register_field_error(view.state.clone(), RegisterRequestClientFormField::Username);
-	let email_error =
-		register_field_error(view.state.clone(), RegisterRequestClientFormField::Email);
+		register_field_error(state.clone(), RegisterRequestClientFormField::Username);
+	let email_error = register_field_error(state.clone(), RegisterRequestClientFormField::Email);
 	let password_error =
-		register_field_error(view.state.clone(), RegisterRequestClientFormField::Password);
+		register_field_error(state.clone(), RegisterRequestClientFormField::Password);
 
 	page!({
 		{
-			let is_submitting = view.state.is_submitting.get();
-			let email_value = view.email.get();
-			let password_value = view.password.get();
+			let is_submitting = state.is_submitting.get();
 			let submit_label = if is_submitting {
 				"Creating account..."
 			} else {
@@ -110,7 +96,7 @@ fn render_register_form(view: RegisterFormView) -> Page {
 			page!({
 				form {
 					class: SHARED_STYLES.form_stack(),
-					@submit: submit,
+					@submit: view.submit,
 					{ form_error }
 					div {
 						class: SHARED_STYLES.field(),
@@ -118,6 +104,7 @@ fn render_register_form(view: RegisterFormView) -> Page {
 							span { class: SHARED_STYLES.label(), "Username" }
 							input {
 								id: "register-username",
+								name: "username",
 								aria_label: "Username",
 								aria_describedby: "register-username-error",
 								class: SHARED_STYLES.input(),
@@ -125,7 +112,7 @@ fn render_register_form(view: RegisterFormView) -> Page {
 								autocomplete: "username",
 								maxlength: 32,
 								placeholder: "Choose a username",
-								bind: view.username,
+								bind: view.runtime.field(RegisterRequestClientFormField::Username),
 							}
 						}
 						div {
@@ -139,6 +126,7 @@ fn render_register_form(view: RegisterFormView) -> Page {
 							span { class: SHARED_STYLES.label(), "Email" }
 							input {
 								id: "register-email",
+								name: "email",
 								aria_label: "Email",
 								aria_describedby: "register-email-error",
 								class: SHARED_STYLES.input(),
@@ -146,8 +134,7 @@ fn render_register_form(view: RegisterFormView) -> Page {
 								autocomplete: "email",
 								maxlength: 254,
 								placeholder: "Enter your email",
-								value: email_value,
-								@input: view.email_input,
+								bind: view.runtime.field(RegisterRequestClientFormField::Email),
 							}
 						}
 						div {
@@ -161,6 +148,7 @@ fn render_register_form(view: RegisterFormView) -> Page {
 							span { class: SHARED_STYLES.label(), "Password" }
 							input {
 								id: "register-password",
+								name: "password",
 								aria_label: "Password",
 								aria_describedby: "register-password-error",
 								class: SHARED_STYLES.input(),
@@ -168,8 +156,7 @@ fn render_register_form(view: RegisterFormView) -> Page {
 								autocomplete: "new-password",
 								maxlength: 128,
 								placeholder: "Create a password (min 8 characters)",
-								value: password_value,
-								@input: view.password_input,
+								bind: view.runtime.field(RegisterRequestClientFormField::Password),
 							}
 						}
 						div {
@@ -205,43 +192,17 @@ pub fn register_page() -> Page {
 			}
 		})
 		.build();
-	let register_state = register_runtime.form_state();
-	let username = register_runtime.watch_field::<String>(register_form.username_field());
-	let email = register_runtime.watch_field::<String>(register_form.email_field());
-	let password = register_runtime.watch_field::<String>(register_form.password_field());
-	let email_input = use_callback(
-		move |event: InputEvent| {
-			let Ok(value) = event.value() else {
-				return;
-			};
-			email.set(value);
+	let mutation = register_form.server_mutation(&register_runtime).build();
+	let submit = use_callback(
+		move |event: SubmitEvent| {
+			event.prevent_default();
+			mutation.dispatch();
 		},
 		ExplicitDeps::from_node_ids([]),
 	);
-	let password_input = use_callback(
-		move |event: InputEvent| {
-			let Ok(value) = event.value() else {
-				return;
-			};
-			password.set(value);
-		},
-		ExplicitDeps::from_node_ids([]),
-	);
-	let submit_form = register_form.clone();
-	let submit_runtime = register_runtime.clone();
-	let register_action = use_action(move |(): ()| {
-		let form = submit_form.clone();
-		let runtime = submit_runtime.clone();
-		async move { form.submit(&runtime).await }
-	});
 	let form_view = render_register_form(RegisterFormView {
-		state: register_state,
-		action: register_action,
-		username,
-		email,
-		password,
-		email_input,
-		password_input,
+		runtime: register_runtime,
+		submit,
 	});
 	let oauth_buttons = oauth_buttons();
 	let footer = page!({
@@ -271,6 +232,28 @@ mod tests {
 	use rstest::rstest;
 
 	use super::*;
+
+	#[cfg(native)]
+	#[rstest]
+	fn register_server_mutation_is_inert_during_native_rendering() {
+		ReactiveScope::run(|| {
+			// Arrange
+			let form = RegisterRequestClientForm::new();
+			let runtime = use_form(&form).build();
+			let mutation = form.server_mutation(&runtime).build();
+
+			// Act
+			let outcome = mutation.dispatch();
+
+			// Assert
+			assert_eq!(
+				outcome,
+				reinhardt::pages::MutationDispatchOutcome::UnsupportedTarget
+			);
+			assert_eq!(mutation.is_pending(), false);
+			assert_eq!(runtime.form_state().is_submitting.get(), false);
+		});
+	}
 
 	#[rstest]
 	fn register_client_form_preserves_the_named_request_payload() {

@@ -6,7 +6,7 @@
 #[cfg(native)]
 use reinhardt::di::Depends;
 use reinhardt::dto;
-use reinhardt::pages::ClientForm;
+use reinhardt::pages::client_form;
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 use serde::{Deserialize, Serialize};
 
@@ -24,7 +24,7 @@ pub struct DeploymentInfo {
 
 /// Browser payload for creating a deployment in the current organization.
 #[dto]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ClientForm)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[client_form(
 	server_fn = crate::apps::deployments::server_fn::create_deployment_for_current_org,
 	validate
@@ -42,7 +42,7 @@ pub struct CreateDeploymentFormRequest {
 
 /// Browser payload for updating a deployment in the current organization.
 #[dto]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ClientForm)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[client_form(
 	server_fn = crate::apps::deployments::server_fn::update_deployment_for_current_org,
 	validate
@@ -60,7 +60,7 @@ pub struct UpdateDeploymentFormRequest {
 
 /// Browser payload for changing a deployment status in the current organization.
 #[dto]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ClientForm)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[client_form(
 	server_fn = crate::apps::deployments::server_fn::update_deployment_status_for_current_org,
 	validate

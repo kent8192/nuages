@@ -10,7 +10,6 @@ pub mod admin;
 #[cfg(client)]
 pub mod client;
 pub mod model_form;
-#[cfg(server)]
 pub mod models;
 #[cfg(server)]
 pub mod serializers;

@@ -8,9 +8,9 @@ use reinhardt::pages::component::Page;
 use reinhardt::pages::event::{ClickEvent, SubmitEvent};
 use reinhardt::pages::page;
 use reinhardt::pages::prelude::{
-	Action, Callback, FieldError, FormState, QueryClient, QueryHandle, QueryOptions, QuerySnapshot,
-	QueryStatus, RouterHandle, Signal, UseFormAsyncSubmitOutcome, queries, use_action, use_form,
-	use_query, use_router,
+	Callback, FieldError, QueryClient, QueryHandle, QueryOptions, QuerySnapshot, QueryStatus,
+	RouterHandle, ServerMutation, Signal, UseFormReturn, queries, use_form, use_query, use_router,
+	use_server_mutation,
 };
 use reinhardt::pages::router::Query;
 use reinhardt::pages::server_fn::ServerFnError;
@@ -22,18 +22,12 @@ use crate::apps::deployments::client::components::preview_list::{
 };
 use crate::apps::deployments::client::style::STYLES;
 use crate::apps::deployments::server_fn::{
-	CreateDeploymentFormRequest, CreateDeploymentFormRequestClientForm,
-	CreateDeploymentFormRequestClientFormField, DeploymentInfo, ProjectPreviewSummary,
-	UpdateDeploymentFormRequest, UpdateDeploymentFormRequestClientForm,
-	UpdateDeploymentFormRequestClientFormField, UpdateDeploymentStatusFormRequest,
+	CreateDeploymentFormRequestClientForm, CreateDeploymentFormRequestClientFormField,
+	DeploymentInfo, ProjectPreviewSummary, UpdateDeploymentFormRequest,
+	UpdateDeploymentFormRequestClientForm, UpdateDeploymentFormRequestClientFormField,
 	UpdateDeploymentStatusFormRequestClientForm, UpdateDeploymentStatusFormRequestClientFormField,
-	deployment_logs_for_current_org, list_deployment_previews_for_current_org,
-	list_deployments_for_current_org,
-};
-#[cfg(wasm)]
-use crate::apps::deployments::server_fn::{
-	create_deployment_for_current_org, delete_deployment_for_current_org,
-	update_deployment_for_current_org, update_deployment_status_for_current_org,
+	delete_deployment_for_current_org, deployment_logs_for_current_org,
+	list_deployment_previews_for_current_org, list_deployments_for_current_org,
 };
 use crate::apps::github::server_fn::list_github_project_previews_for_current_org;
 use crate::shared::client::components::entity_select::{EntitySelectOption, entity_select};
@@ -156,91 +150,20 @@ fn render_live_log_selector(
 	)
 }
 
-#[cfg(wasm)]
-async fn submit_create_deployment(
-	request: CreateDeploymentFormRequest,
-) -> Result<DeploymentInfo, ServerFnError> {
-	create_deployment_for_current_org(request).await
-}
-
-#[cfg(not(wasm))]
-async fn submit_create_deployment(
-	_request: CreateDeploymentFormRequest,
-) -> Result<DeploymentInfo, ServerFnError> {
-	Err(ServerFnError::application(
-		"Deployment creation is only available in the browser client",
-	))
-}
-
-#[cfg(wasm)]
-async fn submit_update_deployment(
-	request: UpdateDeploymentFormRequest,
-) -> Result<DeploymentInfo, ServerFnError> {
-	update_deployment_for_current_org(request).await
-}
-
-#[cfg(not(wasm))]
-async fn submit_update_deployment(
-	_request: UpdateDeploymentFormRequest,
-) -> Result<DeploymentInfo, ServerFnError> {
-	Err(ServerFnError::application(
-		"Deployment updates are only available in the browser client",
-	))
-}
-
-#[cfg(wasm)]
-async fn submit_update_deployment_status(
-	request: UpdateDeploymentStatusFormRequest,
-) -> Result<DeploymentInfo, ServerFnError> {
-	update_deployment_status_for_current_org(request).await
-}
-
-#[cfg(not(wasm))]
-async fn submit_update_deployment_status(
-	_request: UpdateDeploymentStatusFormRequest,
-) -> Result<DeploymentInfo, ServerFnError> {
-	Err(ServerFnError::application(
-		"Deployment status changes are only available in the browser client",
-	))
-}
-
-#[cfg(wasm)]
-async fn submit_delete_deployment(deployment_id: String) -> Result<(), ServerFnError> {
-	delete_deployment_for_current_org(deployment_id).await
-}
-
-#[cfg(not(wasm))]
-async fn submit_delete_deployment(_deployment_id: String) -> Result<(), ServerFnError> {
-	Err(ServerFnError::application(
-		"Deployment deletion is only available in the browser client",
-	))
-}
-
 #[derive(Clone)]
 struct CreateDeploymentFormView {
-	state: FormState<CreateDeploymentFormRequestClientFormField>,
-	action: Action<UseFormAsyncSubmitOutcome<DeploymentInfo>, ServerFnError>,
+	runtime: UseFormReturn<CreateDeploymentFormRequestClientForm>,
+	submit: Callback<SubmitEvent, ()>,
 	success: Signal<Option<String>>,
-	project_name: Signal<String>,
-	cluster_id: Signal<String>,
-	image: Signal<String>,
-	project_yaml: Signal<String>,
 }
 
 fn render_create_deployment_form(view: CreateDeploymentFormView) -> Page {
 	let CreateDeploymentFormView {
-		state,
-		action,
+		runtime,
+		submit,
 		success,
-		project_name,
-		cluster_id,
-		image,
-		project_yaml,
 	} = view;
-	let submit = Callback::new(move |event: SubmitEvent| {
-		event.prevent_default();
-		action.dispatch(());
-	});
+	let state = runtime.form_state();
 	let success_view = success_alert(success);
 	let error_view = alert(state.form_error);
 	let project_name_error = form_field_error(
@@ -292,7 +215,7 @@ fn render_create_deployment_form(view: CreateDeploymentFormView) -> Page {
 							type: "text",
 							maxlength: 63,
 							placeholder: "web",
-							bind: project_name,
+							bind: runtime.field(CreateDeploymentFormRequestClientFormField::ProjectName),
 						}
 					}
 					{ project_name_error }
@@ -310,7 +233,7 @@ fn render_create_deployment_form(view: CreateDeploymentFormView) -> Page {
 							class: SHARED_STYLES.input(),
 							type: "text",
 							readonly: true,
-							bind: cluster_id,
+							bind: runtime.field(CreateDeploymentFormRequestClientFormField::ClusterId),
 						}
 					}
 					{ cluster_error }
@@ -329,7 +252,7 @@ fn render_create_deployment_form(view: CreateDeploymentFormView) -> Page {
 							type: "text",
 							maxlength: 512,
 							placeholder: "ghcr.io/example/web:latest",
-							bind: image,
+							bind: runtime.field(CreateDeploymentFormRequestClientFormField::Image),
 						}
 					}
 					{ image_error }
@@ -348,7 +271,7 @@ fn render_create_deployment_form(view: CreateDeploymentFormView) -> Page {
 						aria_labelledby: "create-deployment-project-yaml-label",
 						class: SHARED_STYLES.input() + SHARED_STYLES.textarea(),
 						maxlength: 65535,
-						bind: project_yaml,
+						bind: runtime.field(CreateDeploymentFormRequestClientFormField::ProjectYaml),
 					}
 					{ project_yaml_error }
 				}
@@ -366,27 +289,18 @@ fn render_create_deployment_form(view: CreateDeploymentFormView) -> Page {
 
 #[derive(Clone)]
 struct UpdateDeploymentFormView {
-	state: FormState<UpdateDeploymentFormRequestClientFormField>,
-	action: Action<UseFormAsyncSubmitOutcome<DeploymentInfo>, ServerFnError>,
+	runtime: UseFormReturn<UpdateDeploymentFormRequestClientForm>,
+	submit: Callback<SubmitEvent, ()>,
 	success: Signal<Option<String>>,
-	project_name: Signal<String>,
-	image: Signal<String>,
-	status: Signal<String>,
 }
 
 fn render_update_deployment_form(view: UpdateDeploymentFormView) -> Page {
 	let UpdateDeploymentFormView {
-		state,
-		action,
+		runtime,
+		submit,
 		success,
-		project_name,
-		image,
-		status,
 	} = view;
-	let submit = Callback::new(move |event: SubmitEvent| {
-		event.prevent_default();
-		action.dispatch(());
-	});
+	let state = runtime.form_state();
 	let success_view = success_alert(success);
 	let error_view = alert(state.form_error);
 	let project_name_error = form_field_error(
@@ -443,7 +357,7 @@ fn render_update_deployment_form(view: UpdateDeploymentFormView) -> Page {
 							class: SHARED_STYLES.input(),
 							type: "text",
 							maxlength: 63,
-							bind: project_name,
+							bind: runtime.field(UpdateDeploymentFormRequestClientFormField::ProjectName),
 						}
 					}
 					{ project_name_error }
@@ -461,7 +375,7 @@ fn render_update_deployment_form(view: UpdateDeploymentFormView) -> Page {
 							class: SHARED_STYLES.input(),
 							type: "text",
 							maxlength: 512,
-							bind: image,
+							bind: runtime.field(UpdateDeploymentFormRequestClientFormField::Image),
 						}
 					}
 					{ image_error }
@@ -479,7 +393,7 @@ fn render_update_deployment_form(view: UpdateDeploymentFormView) -> Page {
 							class: SHARED_STYLES.input(),
 							type: "text",
 							maxlength: 50,
-							bind: status,
+							bind: runtime.field(UpdateDeploymentFormRequestClientFormField::Status),
 						}
 					}
 					{ status_error }
@@ -499,23 +413,18 @@ fn render_update_deployment_form(view: UpdateDeploymentFormView) -> Page {
 
 #[derive(Clone)]
 struct UpdateDeploymentStatusFormView {
-	state: FormState<UpdateDeploymentStatusFormRequestClientFormField>,
-	action: Action<UseFormAsyncSubmitOutcome<DeploymentInfo>, ServerFnError>,
+	runtime: UseFormReturn<UpdateDeploymentStatusFormRequestClientForm>,
+	submit: Callback<SubmitEvent, ()>,
 	success: Signal<Option<String>>,
-	status: Signal<String>,
 }
 
 fn render_update_deployment_status_form(view: UpdateDeploymentStatusFormView) -> Page {
 	let UpdateDeploymentStatusFormView {
-		state,
-		action,
+		runtime,
+		submit,
 		success,
-		status,
 	} = view;
-	let submit = Callback::new(move |event: SubmitEvent| {
-		event.prevent_default();
-		action.dispatch(());
-	});
+	let state = runtime.form_state();
 	let success_view = success_alert(success);
 	let error_view = alert(state.form_error);
 	let status_error = form_field_error(
@@ -555,7 +464,7 @@ fn render_update_deployment_status_form(view: UpdateDeploymentStatusFormView) ->
 							type: "text",
 							maxlength: 50,
 							placeholder: "running",
-							bind: status,
+							bind: runtime.field(UpdateDeploymentStatusFormRequestClientFormField::Status),
 						}
 					}
 					{ status_error }
@@ -574,7 +483,7 @@ fn render_update_deployment_status_form(view: UpdateDeploymentStatusFormView) ->
 
 #[derive(Clone)]
 struct DeleteDeploymentActionView {
-	action: Action<(), ServerFnError>,
+	action: ServerMutation<(), ()>,
 	error: Signal<Option<String>>,
 	success: Signal<Option<String>>,
 	confirmed: Signal<bool>,
@@ -587,7 +496,9 @@ fn render_delete_deployment_action(view: DeleteDeploymentActionView) -> Page {
 		success,
 		confirmed,
 	} = view;
-	let delete = Callback::new(move |_event: ClickEvent| action.dispatch(()));
+	let delete = Callback::new(move |_event: ClickEvent| {
+		action.dispatch(());
+	});
 	let success_view = success_alert(success);
 	let error_view = alert(error);
 	Page::reactive(move || {
@@ -778,6 +689,59 @@ mod tests {
 	use crate::apps::deployments::client::style::STYLES;
 	use crate::shared::client::style::STYLES as SHARED_STYLES;
 	use crate::shared::ws_messages::DeploymentState;
+
+	#[cfg(native)]
+	#[rstest::rstest]
+	fn native_deployment_form_mutations_preserve_state_without_dispatch() {
+		use crate::apps::deployments::server_fn::{
+			CreateDeploymentFormRequestClientForm, CreateDeploymentFormRequestClientFormField,
+			UpdateDeploymentFormRequestClientForm, UpdateDeploymentStatusFormRequestClientForm,
+		};
+		use reinhardt::pages::prelude::{MutationDispatchOutcome, use_form};
+		use reinhardt::pages::reactive::ReactiveScope;
+
+		ReactiveScope::run(|| {
+			// Arrange
+			let create = CreateDeploymentFormRequestClientForm::new();
+			let runtime = use_form(&create).build();
+			runtime.set_value(
+				CreateDeploymentFormRequestClientFormField::ProjectName,
+				"web".to_owned(),
+			);
+			let create_mutation = create
+				.server_mutation(&runtime)
+				.reset_form_on_success()
+				.build();
+			let update = UpdateDeploymentFormRequestClientForm::new();
+			let update_runtime = use_form(&update).build();
+			let update_mutation = update
+				.server_mutation(&update_runtime)
+				.reset_form_on_success()
+				.build();
+			let status = UpdateDeploymentStatusFormRequestClientForm::new();
+			let status_runtime = use_form(&status).build();
+			let status_mutation = status
+				.server_mutation(&status_runtime)
+				.reset_form_on_success()
+				.build();
+
+			// Act
+			let outcomes = [
+				create_mutation.dispatch(),
+				update_mutation.dispatch(),
+				status_mutation.dispatch(),
+			];
+
+			// Assert
+			assert_eq!(outcomes, [MutationDispatchOutcome::UnsupportedTarget; 3]);
+			assert_eq!(runtime.form_state().is_submitting.get(), false);
+			assert_eq!(runtime.form_state().field_errors.get().len(), 0);
+			assert_eq!(
+				CreateDeploymentFormRequestClientForm::to_request(&runtime).project_name,
+				"web"
+			);
+		});
+	}
 
 	#[test]
 	fn deployment_status_badge_composes_shared_base_and_state_tokens() {
@@ -1068,37 +1032,24 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 	let create_query_client = query_client.clone();
 	let create_success_callback = create_success;
 	let create_runtime = use_form(&create_form)
-		.on_submit_success(move |runtime| {
+		.on_submit_success(move |_| {
 			self::invalidate_deployment_queries(&create_query_client);
-			runtime.reset();
 			create_success_callback.set(Some("Deployment created.".to_owned()));
 		})
 		.build();
-	let create_state = create_runtime.form_state();
 	let create_cluster_id = create_runtime.watch_field::<String>(create_form.cluster_id_field());
-	let create_project_name =
-		create_runtime.watch_field::<String>(create_form.project_name_field());
-	let create_image = create_runtime.watch_field::<String>(create_form.image_field());
-	let create_project_yaml =
-		create_runtime.watch_field::<String>(create_form.project_yaml_field());
-	let create_action_runtime = create_runtime.clone();
-	let create_action = use_action(move |(): ()| {
-		let runtime = create_action_runtime.clone();
-		async move {
-			let request = CreateDeploymentFormRequestClientForm::to_request(&runtime);
-			runtime
-				.submit_server_fn(|| async move { submit_create_deployment(request).await })
-				.await
-		}
+	let create_action = create_form
+		.server_mutation(&create_runtime)
+		.reset_form_on_success()
+		.build();
+	let create_submit = Callback::new(move |event: SubmitEvent| {
+		event.prevent_default();
+		create_action.dispatch();
 	});
 	let create_view = self::render_create_deployment_form(CreateDeploymentFormView {
-		state: create_state,
-		action: create_action,
+		runtime: create_runtime,
+		submit: create_submit,
 		success: create_success,
-		project_name: create_project_name,
-		cluster_id: create_cluster_id,
-		image: create_image,
-		project_yaml: create_project_yaml,
 	});
 
 	let edit_form =
@@ -1112,34 +1063,27 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 	let edit_query_client = query_client.clone();
 	let edit_success_callback = edit_success;
 	let edit_runtime = use_form(&edit_form)
-		.on_submit_success(move |runtime| {
+		.on_submit_success(move |_| {
 			self::invalidate_deployment_queries(&edit_query_client);
-			runtime.reset();
 			edit_success_callback.set(Some("Deployment updated.".to_owned()));
 		})
 		.build();
-	let edit_state = edit_runtime.form_state();
 	let edit_deployment_id = edit_runtime.watch_field::<String>(edit_form.deployment_id_field());
 	let edit_project_name = edit_runtime.watch_field::<String>(edit_form.project_name_field());
 	let edit_image = edit_runtime.watch_field::<String>(edit_form.image_field());
 	let edit_status = edit_runtime.watch_field::<String>(edit_form.status_field());
-	let edit_action_runtime = edit_runtime.clone();
-	let edit_action = use_action(move |(): ()| {
-		let runtime = edit_action_runtime.clone();
-		async move {
-			let request = UpdateDeploymentFormRequestClientForm::to_request(&runtime);
-			runtime
-				.submit_server_fn(|| async move { submit_update_deployment(request).await })
-				.await
-		}
+	let edit_action = edit_form
+		.server_mutation(&edit_runtime)
+		.reset_form_on_success()
+		.build();
+	let edit_submit = Callback::new(move |event: SubmitEvent| {
+		event.prevent_default();
+		edit_action.dispatch();
 	});
 	let edit_view = self::render_update_deployment_form(UpdateDeploymentFormView {
-		state: edit_state,
-		action: edit_action,
+		runtime: edit_runtime,
+		submit: edit_submit,
 		success: edit_success,
-		project_name: edit_project_name,
-		image: edit_image,
-		status: edit_status,
 	});
 
 	let status_form = UpdateDeploymentStatusFormRequestClientForm::new();
@@ -1147,31 +1091,25 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 	let status_query_client = query_client.clone();
 	let status_success_callback = status_success;
 	let status_runtime = use_form(&status_form)
-		.on_submit_success(move |runtime| {
+		.on_submit_success(move |_| {
 			self::invalidate_deployment_queries(&status_query_client);
-			runtime.reset();
 			status_success_callback.set(Some("Deployment status updated.".to_owned()));
 		})
 		.build();
-	let status_state = status_runtime.form_state();
 	let status_deployment_id =
 		status_runtime.watch_field::<String>(status_form.deployment_id_field());
-	let status_value = status_runtime.watch_field::<String>(status_form.status_field());
-	let status_action_runtime = status_runtime.clone();
-	let status_action = use_action(move |(): ()| {
-		let runtime = status_action_runtime.clone();
-		async move {
-			let request = UpdateDeploymentStatusFormRequestClientForm::to_request(&runtime);
-			runtime
-				.submit_server_fn(|| async move { submit_update_deployment_status(request).await })
-				.await
-		}
+	let status_action = status_form
+		.server_mutation(&status_runtime)
+		.reset_form_on_success()
+		.build();
+	let status_submit = Callback::new(move |event: SubmitEvent| {
+		event.prevent_default();
+		status_action.dispatch();
 	});
 	let status_view = self::render_update_deployment_status_form(UpdateDeploymentStatusFormView {
-		state: status_state,
-		action: status_action,
+		runtime: status_runtime,
+		submit: status_submit,
 		success: status_success,
-		status: status_value,
 	});
 
 	let delete_deployment_id = Signal::new(String::new());
@@ -1192,7 +1130,7 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 	let delete_confirmed_for_callback = delete_confirmed;
 	let log_deployment_id_for_callback = log_deployment_id;
 	let deployments_href_for_callback = deployments_href.clone();
-	let delete_action = use_action(move |(): ()| {
+	let delete_action = use_server_mutation(move |(): ()| {
 		delete_error_for_action.set(None);
 		let deployment_id = delete_deployment_id_for_action.get();
 		let confirmed = delete_confirmed_for_action.get();
@@ -1207,7 +1145,7 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 					"Select a deployment before deleting",
 				));
 			}
-			submit_delete_deployment(deployment_id).await
+			delete_deployment_for_current_org::mutation()(deployment_id).await
 		}
 	})
 	.on_success(move |_| {
@@ -1222,7 +1160,8 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 	})
 	.on_error(move |error| {
 		delete_error_for_callback.set(Some(error.user_message().to_owned()));
-	});
+	})
+	.build();
 	let delete_view = self::render_delete_deployment_action(DeleteDeploymentActionView {
 		action: delete_action,
 		error: delete_error,

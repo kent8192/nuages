@@ -9,26 +9,20 @@ use reinhardt::pages::event::{ClickEvent, InputEvent, SubmitEvent};
 use reinhardt::pages::form;
 use reinhardt::pages::page;
 use reinhardt::pages::prelude::{
-	Action, Callback, ClassToken, FieldError, FormState, QueryClient, QueryHandle, QueryOptions,
-	QueryStatus, Signal, UseFormAsyncSubmitOutcome, queries, use_action, use_callback, use_form,
-	use_query,
+	Callback, ClassToken, FieldError, QueryClient, QueryHandle, QueryOptions, QueryStatus,
+	ServerMutation, Signal, UseFormReturn, queries, use_callback, use_form, use_query,
+	use_server_mutation,
 };
 use reinhardt::pages::reactive::ExplicitDeps;
 use reinhardt::pages::server_fn::ServerFnError;
 
 use crate::apps::clusters::client::style::STYLES;
-use crate::apps::clusters::model_form::{
-	ClusterCreateFields, ClusterCreateFormFormSchema, ClusterCreateFormModelFormData,
-};
+use crate::apps::clusters::model_form::{ClusterCreateForm, ClusterCreateFormField};
 use crate::apps::clusters::server_fn::{
 	ClusterInfo, ClusterTokenInfo, UpdateClusterFormRequest, UpdateClusterFormRequestClientForm,
 	UpdateClusterFormRequestClientFormField, create_cluster_for_current_org,
-	list_clusters_for_current_org,
-};
-#[cfg(wasm)]
-use crate::apps::clusters::server_fn::{
-	delete_cluster_for_current_org, rotate_cluster_token_for_current_org,
-	update_cluster_for_current_org,
+	delete_cluster_for_current_org, list_clusters_for_current_org,
+	rotate_cluster_token_for_current_org,
 };
 use crate::apps::deployments::client::components::cluster_health::cluster_health_container;
 use crate::shared::client::components::entity_select::{EntitySelectOption, entity_select};
@@ -92,71 +86,6 @@ fn invalidate_cluster_list_query(query_client: &QueryClient) {
 
 fn invalidate_cluster_query_family(query_client: &QueryClient) {
 	query_client.invalidate_family(list_clusters_for_current_org::family());
-}
-
-#[cfg(wasm)]
-fn clear_create_cluster_inputs() {
-	use wasm_bindgen::JsCast;
-
-	let Some(document) = web_sys::window().and_then(|window| window.document()) else {
-		return;
-	};
-	for id in ["create-cluster-name", "create-cluster-api-url"] {
-		if let Some(input) = document
-			.get_element_by_id(id)
-			.and_then(|element| element.dyn_into::<web_sys::HtmlInputElement>().ok())
-		{
-			input.set_value("");
-		}
-	}
-}
-
-#[cfg(not(wasm))]
-fn clear_create_cluster_inputs() {}
-
-#[cfg(wasm)]
-async fn submit_cluster_update(
-	request: UpdateClusterFormRequest,
-) -> Result<ClusterInfo, ServerFnError> {
-	update_cluster_for_current_org(request).await
-}
-
-#[cfg(not(wasm))]
-fn unavailable_during_server_rendering<T>(operation: &str) -> Result<T, ServerFnError> {
-	Err(ServerFnError::application(format!(
-		"Cluster {operation} is unavailable during server rendering"
-	)))
-}
-
-#[cfg(not(wasm))]
-async fn submit_cluster_update(
-	_request: UpdateClusterFormRequest,
-) -> Result<ClusterInfo, ServerFnError> {
-	unavailable_during_server_rendering("updates")
-}
-
-#[cfg(wasm)]
-async fn submit_cluster_delete(cluster_id: String) -> Result<(), ServerFnError> {
-	delete_cluster_for_current_org(cluster_id).await
-}
-
-#[cfg(not(wasm))]
-async fn submit_cluster_delete(_cluster_id: String) -> Result<(), ServerFnError> {
-	unavailable_during_server_rendering("deletion")
-}
-
-#[cfg(wasm)]
-async fn submit_cluster_token_rotation(
-	cluster_id: String,
-) -> Result<ClusterTokenInfo, ServerFnError> {
-	rotate_cluster_token_for_current_org(cluster_id).await
-}
-
-#[cfg(not(wasm))]
-async fn submit_cluster_token_rotation(
-	_cluster_id: String,
-) -> Result<ClusterTokenInfo, ServerFnError> {
-	unavailable_during_server_rendering("token rotation")
 }
 
 fn success_alert(message: Signal<Option<String>>) -> Page {
@@ -231,27 +160,18 @@ where
 
 #[derive(Clone)]
 struct ClusterUpdateFormView {
-	state: FormState<UpdateClusterFormRequestClientFormField>,
-	action: Action<UseFormAsyncSubmitOutcome<ClusterInfo>, ServerFnError>,
+	runtime: UseFormReturn<UpdateClusterFormRequestClientForm>,
+	submit: Callback<SubmitEvent, ()>,
 	success: Signal<Option<String>>,
-	name: Signal<String>,
-	api_url: Signal<String>,
-	is_active: Signal<bool>,
 }
 
 fn render_cluster_update_form(view: ClusterUpdateFormView) -> Page {
 	let ClusterUpdateFormView {
-		state,
-		action,
+		runtime,
+		submit,
 		success,
-		name,
-		api_url,
-		is_active,
 	} = view;
-	let submit = Callback::new(move |event: SubmitEvent| {
-		event.prevent_default();
-		action.dispatch(());
-	});
+	let state = runtime.form_state();
 	let success_view = success_alert(success);
 	let error_view = alert(state.form_error);
 	let name_error = form_field_error(
@@ -302,7 +222,7 @@ fn render_cluster_update_form(view: ClusterUpdateFormView) -> Page {
 								class: SHARED_STYLES.input(),
 								type: "text",
 								maxlength: 63,
-								bind: name,
+								bind: runtime.field(UpdateClusterFormRequestClientFormField::Name),
 							}
 						}
 						{ name_error }
@@ -315,9 +235,9 @@ fn render_cluster_update_form(view: ClusterUpdateFormView) -> Page {
 								id: "update-cluster-api-url",
 								aria_label: "Cluster API URL",
 								class: SHARED_STYLES.input(),
-								type: "text",
+								type: "url",
 								maxlength: 2048,
-								bind: api_url,
+								bind: runtime.field(UpdateClusterFormRequestClientFormField::ApiUrl),
 							}
 						}
 						{ api_url_error }
@@ -327,7 +247,7 @@ fn render_cluster_update_form(view: ClusterUpdateFormView) -> Page {
 						input {
 							id: "update-cluster-active",
 							type: "checkbox",
-							bind: is_active,
+							bind: runtime.field(UpdateClusterFormRequestClientFormField::IsActive),
 						}
 						span { "Active" }
 					}
@@ -347,7 +267,7 @@ fn render_cluster_update_form(view: ClusterUpdateFormView) -> Page {
 
 #[derive(Clone)]
 struct DeleteClusterActionView {
-	action: Action<(), ServerFnError>,
+	action: ServerMutation<String, ()>,
 	cluster_id: Signal<String>,
 	confirmed: Signal<bool>,
 	error: Signal<Option<String>>,
@@ -411,7 +331,7 @@ fn render_delete_cluster_action(view: DeleteClusterActionView) -> Page {
 
 #[derive(Clone)]
 struct RotateClusterTokenActionView {
-	action: Action<ClusterTokenInfo, ServerFnError>,
+	action: ServerMutation<String, ClusterTokenInfo>,
 	cluster_id: Signal<String>,
 	confirmed: Signal<bool>,
 	error: Signal<Option<String>>,
@@ -620,9 +540,7 @@ pub fn clusters_list_page() -> Page {
 
 	let create_form = form! {
 		name: CreateClusterForm,
-		model: ClusterCreateForm,
-		policy: ClusterCreateFields,
-		fields: [name, api_url],
+		model_form: ClusterCreateForm,
 		server_fn: create_cluster_for_current_org,
 		overrides: {
 			name: {
@@ -636,11 +554,13 @@ pub fn clusters_list_page() -> Page {
 		}
 	};
 	let create_query_client = query_client.clone();
+	let create_name = Signal::new(String::new());
+	let create_api_url = Signal::new(String::new());
 	let create_runtime = use_form(&create_form)
-		.on_submit_success(move |runtime| {
+		.on_submit_success(move |_| {
 			self::invalidate_cluster_list_query(&create_query_client);
-			runtime.reset();
-			self::clear_create_cluster_inputs();
+			create_name.set(String::new());
+			create_api_url.set(String::new());
 		})
 		.build();
 	let create_state = create_runtime.form_state();
@@ -664,50 +584,30 @@ pub fn clusters_list_page() -> Page {
 		},
 		ExplicitDeps::from_node_ids([]),
 	);
-	// ModelForm responses are client-only in alpha.11 because native SSR does
-	// not dispatch the mutation and cannot receive the one-time token payload.
-	#[cfg(wasm)]
-	let create_action = {
-		let runtime = create_runtime.clone();
-		let form = create_form.clone();
-		use_action(move |(): ()| {
-			let runtime = runtime.clone();
-			let form = form.clone();
-			async move { runtime.submit_server_fn(|| form.submit_response()).await }
-		})
-	};
-	#[cfg(not(wasm))]
-	let create_action = use_action(|(): ()| async {
-		Err::<UseFormAsyncSubmitOutcome<ClusterTokenInfo>, ServerFnError>(
-			ServerFnError::application(
-				"Cluster registration is unavailable during server rendering",
-			),
-		)
-	});
+	let create_action = create_form
+		.server_mutation(&create_runtime)
+		.reset_form_on_success()
+		.build();
+	let create_action_for_submit = create_action.clone();
 	let create_submit = Callback::new(move |event: SubmitEvent| {
 		event.prevent_default();
-		if !create_action.is_pending() {
-			create_action.dispatch(());
-		}
+		create_action_for_submit.dispatch();
 	});
+	let create_action_for_dismiss = create_action.clone();
 	let create_dismiss = Callback::new(move |event: ClickEvent| {
 		event.prevent_default();
-		create_action.reset();
+		create_action_for_dismiss.reset();
 	});
 	let create_error = alert(create_state.form_error);
-	let create_name_error = form_field_error(create_state.field_errors, create_form.name_field());
+	let create_name_error =
+		form_field_error(create_state.field_errors, ClusterCreateFormField::Name);
 	let create_api_url_error =
-		form_field_error(create_state.field_errors, create_form.api_url_field());
+		form_field_error(create_state.field_errors, ClusterCreateFormField::ApiUrl);
 	let create_view = page!({
 		{
 			let is_submitting = create_action.is_pending();
 			let token_confirmation = create_action
 				.result()
-				.and_then(|outcome| match outcome {
-					UseFormAsyncSubmitOutcome::Submitted(token) => Some(token),
-					UseFormAsyncSubmitOutcome::AlreadyPending
-					| UseFormAsyncSubmitOutcome::ValidationFailed => None,
-				})
 				.map(|token| self::render_cluster_token_confirmation(token, create_dismiss));
 			let token_confirmation = token_confirmation.unwrap_or(Page::Empty);
 			page!({
@@ -729,6 +629,7 @@ pub fn clusters_list_page() -> Page {
 									type: "text",
 									maxlength: 63,
 									placeholder: "prod-us-east",
+									bind: create_name,
 									@input: create_name_input,
 								}
 							}
@@ -747,9 +648,10 @@ pub fn clusters_list_page() -> Page {
 									name: "api_url",
 									aria_label: "Cluster API URL",
 									class: SHARED_STYLES.input(),
-									type: "text",
+									type: "url",
 									maxlength: 2048,
 									placeholder: "https://kubernetes.example.com:6443",
+									bind: create_api_url,
 									@input: create_api_url_input,
 								}
 							}
@@ -787,26 +689,19 @@ pub fn clusters_list_page() -> Page {
 	let edit_query_client = query_client.clone();
 	let edit_success_callback = edit_success;
 	let edit_runtime = use_form(&edit_form)
-		.on_submit_success(move |runtime| {
+		.on_submit_success(move |_| {
 			self::invalidate_cluster_list_query(&edit_query_client);
-			runtime.reset();
 			edit_success_callback.set(Some("Cluster updated.".to_owned()));
 		})
 		.build();
-	let edit_state = edit_runtime.form_state();
 	let edit_cluster_id = edit_runtime.watch_field::<String>(edit_form.cluster_id_field());
-	let edit_name = edit_runtime.watch_field::<String>(edit_form.name_field());
-	let edit_api_url = edit_runtime.watch_field::<String>(edit_form.api_url_field());
-	let edit_is_active = edit_runtime.watch_field::<bool>(edit_form.is_active_field());
-	let edit_action_runtime = edit_runtime.clone();
-	let edit_action = use_action(move |(): ()| {
-		let runtime = edit_action_runtime.clone();
-		async move {
-			let request = UpdateClusterFormRequestClientForm::to_request(&runtime);
-			runtime
-				.submit_server_fn(|| async move { submit_cluster_update(request).await })
-				.await
-		}
+	let edit_action = edit_form
+		.server_mutation(&edit_runtime)
+		.reset_form_on_success()
+		.build();
+	let edit_submit = Callback::new(move |event: SubmitEvent| {
+		event.prevent_default();
+		edit_action.dispatch();
 	});
 	let edit_runtime_for_selection = edit_runtime.clone();
 	let edit_success_for_selection = edit_success;
@@ -833,12 +728,9 @@ pub fn clusters_list_page() -> Page {
 		ExplicitDeps::from_node_ids([]),
 	);
 	let edit_view = self::render_cluster_update_form(ClusterUpdateFormView {
-		state: edit_state,
-		action: edit_action,
+		runtime: edit_runtime,
+		submit: edit_submit,
 		success: edit_success,
-		name: edit_name,
-		api_url: edit_api_url,
-		is_active: edit_is_active,
 	});
 
 	let delete_cluster_id = Signal::new(String::new());
@@ -852,7 +744,7 @@ pub fn clusters_list_page() -> Page {
 	let delete_confirmed_for_success = delete_confirmed;
 	let delete_success_for_success = delete_success;
 	let delete_error_for_callback = delete_error;
-	let delete_action = use_action(move |cluster_id: String| {
+	let delete_action = use_server_mutation(move |cluster_id: String| {
 		delete_error_for_action.set(None);
 		let confirmed = delete_confirmed_for_action.get();
 		async move {
@@ -866,7 +758,7 @@ pub fn clusters_list_page() -> Page {
 					"Select a cluster before deleting",
 				));
 			}
-			submit_cluster_delete(cluster_id).await
+			delete_cluster_for_current_org::mutation()(cluster_id).await
 		}
 	})
 	.on_success(move |_| {
@@ -877,7 +769,8 @@ pub fn clusters_list_page() -> Page {
 	})
 	.on_error(move |error| {
 		delete_error_for_callback.set(Some(error.user_message().to_owned()));
-	});
+	})
+	.build();
 	let delete_confirmed_for_selection = delete_confirmed;
 	let delete_error_for_selection = delete_error;
 	let delete_success_for_selection = delete_success;
@@ -907,7 +800,7 @@ pub fn clusters_list_page() -> Page {
 	let rotate_error_for_action = rotate_error;
 	let rotate_confirmed_for_success = rotate_confirmed;
 	let rotate_error_for_callback = rotate_error;
-	let rotate_action = use_action(move |cluster_id: String| {
+	let rotate_action = use_server_mutation(move |cluster_id: String| {
 		rotate_error_for_action.set(None);
 		let confirmed = rotate_confirmed_for_action.get();
 		async move {
@@ -921,7 +814,7 @@ pub fn clusters_list_page() -> Page {
 					"Select a cluster before rotating its token",
 				));
 			}
-			submit_cluster_token_rotation(cluster_id).await
+			rotate_cluster_token_for_current_org::mutation()(cluster_id).await
 		}
 	})
 	.on_success(move |_| {
@@ -930,7 +823,8 @@ pub fn clusters_list_page() -> Page {
 	})
 	.on_error(move |error| {
 		rotate_error_for_callback.set(Some(error.user_message().to_owned()));
-	});
+	})
+	.build();
 	let rotate_confirmed_for_selection = rotate_confirmed;
 	let rotate_error_for_selection = rotate_error;
 	let rotate_action_for_selection = rotate_action;
@@ -1254,6 +1148,8 @@ pub fn clusters_list_page() -> Page {
 #[cfg(test)]
 mod tests {
 	#[cfg(native)]
+	use reinhardt::pages::prelude::UseFormAsyncSubmitOutcome;
+	#[cfg(native)]
 	use std::cell::Cell;
 	#[cfg(native)]
 	use std::rc::Rc;
@@ -1343,19 +1239,28 @@ mod tests {
 
 	#[cfg(native)]
 	#[rstest]
-	fn server_rendering_actions_share_the_operation_specific_error() {
-		// Arrange
-		let operation = "token rotation";
+	fn native_cluster_mutation_does_not_dispatch_or_run_callbacks() {
+		ReactiveScope::run(|| {
+			// Arrange
+			let callbacks = Rc::new(Cell::new(0));
+			let callbacks_for_success = Rc::clone(&callbacks);
+			let mutation = use_server_mutation(delete_cluster_for_current_org::mutation())
+				.on_success(move |_| callbacks_for_success.set(callbacks_for_success.get() + 1))
+				.build();
 
-		// Act
-		let error = unavailable_during_server_rendering::<()>(operation)
-			.expect_err("server rendering must reject cluster mutations");
+			// Act
+			let outcome = mutation.dispatch("41".to_owned());
 
-		// Assert
-		assert_eq!(
-			error.message(),
-			"Cluster token rotation is unavailable during server rendering"
-		);
+			// Assert
+			assert_eq!(
+				outcome,
+				reinhardt::pages::prelude::MutationDispatchOutcome::UnsupportedTarget
+			);
+			assert_eq!(mutation.is_pending(), false);
+			assert_eq!(mutation.result(), None);
+			assert_eq!(mutation.error(), None);
+			assert_eq!(callbacks.get(), 0);
+		});
 	}
 
 	#[rstest]
@@ -1364,9 +1269,7 @@ mod tests {
 			// Arrange
 			let form = form! {
 				name: CreateClusterStructuredErrorForm,
-				model: ClusterCreateForm,
-				policy: ClusterCreateFields,
-				fields: [name, api_url],
+				model_form: ClusterCreateForm,
 				server_fn: create_cluster_for_current_org,
 			};
 			let runtime = use_form(&form).build();
@@ -1385,7 +1288,7 @@ mod tests {
 			// Assert
 			assert_eq!(
 				runtime
-					.get_field_state(form.name_field())
+					.get_field_state(ClusterCreateFormField::Name)
 					.error
 					.as_ref()
 					.map(FieldError::message),
@@ -1393,7 +1296,7 @@ mod tests {
 			);
 			assert_eq!(
 				runtime
-					.get_field_state(form.api_url_field())
+					.get_field_state(ClusterCreateFormField::ApiUrl)
 					.error
 					.as_ref()
 					.map(FieldError::message),

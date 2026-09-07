@@ -2,13 +2,14 @@
 
 use reinhardt::pages::component;
 use reinhardt::pages::component::Page;
-use reinhardt::pages::event::{InputEvent, SubmitEvent};
+use reinhardt::pages::event::SubmitEvent;
 use reinhardt::pages::page;
 #[cfg(test)]
 use reinhardt::pages::prelude::FieldError;
+#[cfg(all(test, native))]
+use reinhardt::pages::prelude::UseFormAsyncSubmitOutcome;
 use reinhardt::pages::prelude::{
-	Action, Callback, FormState, QueryClient, Signal, UseFormAsyncSubmitOutcome, queries,
-	use_action, use_callback, use_form,
+	Callback, FormState, QueryClient, UseFormReturn, queries, use_callback, use_form,
 };
 use reinhardt::pages::reactive::ExplicitDeps;
 use reinhardt::pages::server_fn::ServerFnError;
@@ -30,17 +31,13 @@ use crate::apps::github::server_fn::{
 	get_github_onboarding_for_current_org, list_github_project_previews_for_current_org,
 	list_github_repositories_for_current_org, list_github_repositories_for_installation,
 };
-use crate::shared::AuthResponse;
 use crate::shared::client::routes::route_href;
 use crate::shared::client::style::STYLES as SHARED_STYLES;
 
 #[derive(Clone)]
 struct LoginFormView {
-	state: FormState<LoginRequestClientFormField>,
-	action: Action<UseFormAsyncSubmitOutcome<AuthResponse>, ServerFnError>,
-	username: Signal<String>,
-	password: Signal<String>,
-	password_input: Callback<InputEvent, ()>,
+	runtime: UseFormReturn<LoginRequestClientForm>,
+	submit: Callback<SubmitEvent, ()>,
 }
 
 fn login_field_error(
@@ -90,23 +87,14 @@ fn login_form_error(state: FormState<LoginRequestClientFormField>) -> Page {
 }
 
 fn render_login_form(view: LoginFormView) -> Page {
-	let submit = use_callback(
-		move |event: SubmitEvent| {
-			event.prevent_default();
-			view.action.dispatch(());
-		},
-		ExplicitDeps::from_node_ids([]),
-	);
-	let form_error = login_form_error(view.state.clone());
-	let username_error =
-		login_field_error(view.state.clone(), LoginRequestClientFormField::Username);
-	let password_error =
-		login_field_error(view.state.clone(), LoginRequestClientFormField::Password);
+	let state = view.runtime.form_state();
+	let form_error = login_form_error(state.clone());
+	let username_error = login_field_error(state.clone(), LoginRequestClientFormField::Username);
+	let password_error = login_field_error(state.clone(), LoginRequestClientFormField::Password);
 
 	page!({
 		{
-			let is_submitting = view.state.is_submitting.get();
-			let password_value = view.password.get();
+			let is_submitting = state.is_submitting.get();
 			let submit_label = if is_submitting {
 				"Signing in..."
 			} else {
@@ -115,7 +103,7 @@ fn render_login_form(view: LoginFormView) -> Page {
 			page!({
 				form {
 					class: SHARED_STYLES.form_stack(),
-					@submit: submit,
+					@submit: view.submit,
 					{ form_error }
 					div {
 						class: SHARED_STYLES.field(),
@@ -123,6 +111,7 @@ fn render_login_form(view: LoginFormView) -> Page {
 							span { class: SHARED_STYLES.label(), "Username" }
 							input {
 								id: "login-username",
+								name: "username",
 								aria_label: "Username",
 								aria_describedby: "login-username-error",
 								class: SHARED_STYLES.input(),
@@ -130,7 +119,7 @@ fn render_login_form(view: LoginFormView) -> Page {
 								autocomplete: "username",
 								maxlength: 150,
 								placeholder: "Enter your username",
-								bind: view.username,
+								bind: view.runtime.field(LoginRequestClientFormField::Username),
 							}
 						}
 						div {
@@ -144,6 +133,7 @@ fn render_login_form(view: LoginFormView) -> Page {
 							span { class: SHARED_STYLES.label(), "Password" }
 							input {
 								id: "login-password",
+								name: "password",
 								aria_label: "Password",
 								aria_describedby: "login-password-error",
 								class: SHARED_STYLES.input(),
@@ -151,8 +141,7 @@ fn render_login_form(view: LoginFormView) -> Page {
 								autocomplete: "current-password",
 								maxlength: 128,
 								placeholder: "Enter your password",
-								value: password_value,
-								@input: view.password_input,
+								bind: view.runtime.field(LoginRequestClientFormField::Password),
 							}
 						}
 						div {
@@ -219,31 +208,17 @@ pub fn login_page() -> Page {
 			}
 		})
 		.build();
-	let login_state = login_runtime.form_state();
-	let username = login_runtime.watch_field::<String>(login_form.username_field());
-	let password = login_runtime.watch_field::<String>(login_form.password_field());
-	let password_input = use_callback(
-		move |event: InputEvent| {
-			let Ok(value) = event.value() else {
-				return;
-			};
-			password.set(value);
+	let mutation = login_form.server_mutation(&login_runtime).build();
+	let submit = use_callback(
+		move |event: SubmitEvent| {
+			event.prevent_default();
+			mutation.dispatch();
 		},
 		ExplicitDeps::from_node_ids([]),
 	);
-	let submit_form = login_form.clone();
-	let submit_runtime = login_runtime.clone();
-	let login_action = use_action(move |(): ()| {
-		let form = submit_form.clone();
-		let runtime = submit_runtime.clone();
-		async move { form.submit(&runtime).await }
-	});
 	let form_view = render_login_form(LoginFormView {
-		state: login_state,
-		action: login_action,
-		username,
-		password,
-		password_input,
+		runtime: login_runtime,
+		submit,
 	});
 	let oauth_buttons = oauth_buttons();
 	let register_href = route_href("auth:register_page", "/register");
@@ -281,6 +256,28 @@ mod tests {
 	use crate::shared::UserInfo;
 
 	use super::*;
+
+	#[cfg(native)]
+	#[rstest]
+	fn login_server_mutation_is_inert_during_native_rendering() {
+		ReactiveScope::run(|| {
+			// Arrange
+			let form = LoginRequestClientForm::new();
+			let runtime = use_form(&form).build();
+			let mutation = form.server_mutation(&runtime).build();
+
+			// Act
+			let outcome = mutation.dispatch();
+
+			// Assert
+			assert_eq!(
+				outcome,
+				reinhardt::pages::MutationDispatchOutcome::UnsupportedTarget
+			);
+			assert_eq!(mutation.is_pending(), false);
+			assert_eq!(runtime.form_state().is_submitting.get(), false);
+		});
+	}
 
 	#[rstest]
 	fn login_client_form_preserves_the_named_request_payload() {

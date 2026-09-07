@@ -1,7 +1,7 @@
 //! GitHub App server functions for the WASM dashboard.
 
 use reinhardt::dto;
-use reinhardt::pages::ClientForm;
+use reinhardt::pages::client_form;
 use reinhardt::pages::server_fn::{ServerFnError, server_fn};
 use serde::{Deserialize, Serialize};
 
@@ -124,7 +124,7 @@ pub struct GitHubProjectInfo {
 
 /// Browser payload for importing a GitHub repository into the current organization.
 #[dto]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ClientForm)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[client_form(
 	server_fn = crate::apps::github::server_fn::import_github_repository_for_current_org,
 	validate

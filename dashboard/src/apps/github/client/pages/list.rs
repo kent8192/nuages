@@ -7,27 +7,20 @@ use reinhardt::pages::component::Page;
 use reinhardt::pages::event::SubmitEvent;
 use reinhardt::pages::page;
 use reinhardt::pages::prelude::{
-	Callback, FieldError, QueryHandle, QueryOptions, QueryStatus, Signal,
-	UseFormAsyncSubmitOutcome, use_action_state, use_form, use_query,
+	Callback, FieldError, QueryHandle, QueryOptions, QueryStatus, Signal, queries, use_form,
+	use_query,
 };
 use reinhardt::pages::server_fn::ServerFnError;
-
-#[cfg(wasm)]
-use reinhardt::pages::prelude::queries;
 
 use crate::apps::clusters::server_fn::{ClusterInfo, list_clusters_for_current_org};
 use crate::apps::deployments::client::components::preview_list::{
 	render_preview_list, render_project_identity,
 };
 use crate::apps::deployments::server_fn::ProjectPreviewSummary;
-#[cfg(wasm)]
 use crate::apps::deployments::server_fn::{
 	list_deployment_previews_for_current_org, list_deployments_for_current_org,
 };
 use crate::apps::github::client::style::STYLES;
-#[cfg(native)]
-use crate::apps::github::server_fn::GitHubProjectInfo;
-#[cfg(wasm)]
 use crate::apps::github::server_fn::list_github_repositories_for_installation;
 use crate::apps::github::server_fn::{
 	GitHubOnboardingInfo, GitHubRepositoryImportRequestClientForm,
@@ -213,35 +206,34 @@ pub fn github_repositories_page() -> Page {
 	let import_cluster_id = import_runtime.watch_field::<String>(import_form.cluster_id_field());
 	let import_project_name =
 		import_runtime.watch_field::<String>(import_form.project_name_field());
-	let import_registry = import_runtime.watch_field::<String>(import_form.registry_field());
 	let import_field_errors = import_state.field_errors;
-	#[cfg(wasm)]
-	let import_action = use_action_state(move |(): ()| {
-		let import_form = import_form.clone();
-		let import_runtime = import_runtime.clone();
-		async move { import_form.submit(&import_runtime).await }
-	})
-	.on_success(|outcome| {
-		if matches!(outcome, UseFormAsyncSubmitOutcome::Submitted(_)) {
-			let query_client = queries();
-			query_client.invalidate_family(list_github_repositories_for_current_org::family());
-			query_client.invalidate_family(list_github_repositories_for_installation::family());
-			query_client.invalidate_family(list_github_project_previews_for_current_org::family());
-			query_client.invalidate_family(list_deployments_for_current_org::family());
-			query_client.invalidate_family(list_deployment_previews_for_current_org::family());
-		}
-	})
-	.build();
-	#[cfg(native)]
-	let import_action = use_action_state(move |(): ()| async {
-		Ok::<UseFormAsyncSubmitOutcome<GitHubProjectInfo>, ServerFnError>(
-			UseFormAsyncSubmitOutcome::ValidationFailed,
+	let query_client = queries();
+	let import_action = import_form
+		.server_mutation(&import_runtime)
+		.invalidate_family(
+			query_client.clone(),
+			list_github_repositories_for_current_org::family(),
 		)
-	})
-	.build();
+		.invalidate_family(
+			query_client.clone(),
+			list_github_repositories_for_installation::family(),
+		)
+		.invalidate_family(
+			query_client.clone(),
+			list_github_project_previews_for_current_org::family(),
+		)
+		.invalidate_family(
+			query_client.clone(),
+			list_deployments_for_current_org::family(),
+		)
+		.invalidate_family(
+			query_client,
+			list_deployment_previews_for_current_org::family(),
+		)
+		.build();
 	let submit_import = Callback::new(move |event: SubmitEvent| {
 		event.prevent_default();
-		import_action.dispatch(());
+		import_action.dispatch();
 	});
 	let import_view = page!({
 		form {
@@ -258,7 +250,7 @@ pub fn github_repositories_page() -> Page {
 					class: SHARED_STYLES.input(),
 					type: "text",
 					placeholder: "leave blank to derive from repository",
-					bind: import_project_name,
+					bind: import_runtime.field(GitHubRepositoryImportRequestClientFormField::ProjectName),
 				}
 				{ self::import_field_error(
 					import_field_errors,
@@ -276,7 +268,7 @@ pub fn github_repositories_page() -> Page {
 					class: SHARED_STYLES.input(),
 					type: "text",
 					placeholder: "ghcr.io/kent8192/my-app",
-					bind: import_registry,
+					bind: import_runtime.field(GitHubRepositoryImportRequestClientFormField::Registry),
 				}
 				{ self::import_field_error(
 					import_field_errors,
@@ -819,6 +811,8 @@ pub fn github_repositories_page() -> Page {
 #[cfg(test)]
 mod tests {
 	#[cfg(native)]
+	use reinhardt::pages::prelude::UseFormAsyncSubmitOutcome;
+	#[cfg(native)]
 	use std::cell::Cell;
 	#[cfg(native)]
 	use std::rc::Rc;
@@ -829,6 +823,37 @@ mod tests {
 	use crate::apps::github::server_fn::GitHubRepositoryImportRequest;
 
 	use super::*;
+
+	#[cfg(native)]
+	#[rstest]
+	fn native_import_mutation_preserves_form_values_without_dispatch() {
+		ReactiveScope::run(|| {
+			// Arrange
+			let form = GitHubRepositoryImportRequestClientForm::new();
+			let runtime = use_form(&form).build();
+			runtime.set_value(
+				GitHubRepositoryImportRequestClientFormField::Registry,
+				"ghcr.io/acme".to_owned(),
+			);
+			let mutation = form.server_mutation(&runtime).build();
+
+			// Act
+			let outcome = mutation.dispatch();
+
+			// Assert
+			assert_eq!(
+				outcome,
+				reinhardt::pages::MutationDispatchOutcome::UnsupportedTarget
+			);
+			assert_eq!(mutation.is_pending(), false);
+			assert_eq!(runtime.form_state().is_submitting.get(), false);
+			assert_eq!(runtime.form_state().field_errors.get().len(), 0);
+			assert_eq!(
+				GitHubRepositoryImportRequestClientForm::to_request(&runtime).registry,
+				"ghcr.io/acme"
+			);
+		});
+	}
 
 	#[rstest]
 	fn github_read_queries_use_generated_server_function_families() {

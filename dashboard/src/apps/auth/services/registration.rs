@@ -18,7 +18,7 @@
 
 use chrono::Utc;
 use reinhardt::BaseUser;
-use reinhardt::core::exception::Error as AppError;
+use reinhardt::core::exception::{DatabaseErrorKind, Error as AppError};
 use reinhardt::db::orm::transaction::AtomicTransaction;
 use reinhardt::db::orm::{Model, get_connection};
 use tracing::{error, info};
@@ -62,25 +62,7 @@ pub async fn register_inactive_user(
 		AppError::Internal("Internal server error".to_string())
 	})?;
 
-	let created = match User::objects().create(&user).await {
-		Ok(user) => user,
-		Err(e) => {
-			let err_lower = e.to_string().to_lowercase();
-			if err_lower.contains("unique") || err_lower.contains("duplicate") {
-				let message = if err_lower.contains("email_uniq")
-					|| err_lower.contains("key (email)")
-					|| err_lower.contains("(email)=")
-				{
-					"Email already exists"
-				} else {
-					"Username already exists"
-				};
-				return Err(AppError::Conflict(message.to_string()));
-			}
-			error!("Failed to create user in database: {e}");
-			return Err(AppError::Internal("Internal server error".to_string()));
-		}
-	};
+	let created = User::objects().create(&user).await?;
 
 	let token = generate_token(
 		TokenPurpose::EmailVerification,
@@ -266,8 +248,9 @@ async fn provision_personal_organization_tx(
 }
 
 fn is_unique_violation(error: &AppError) -> bool {
-	let message = error.to_string().to_lowercase();
-	message.contains("unique") || message.contains("duplicate")
+	error
+		.database_error()
+		.is_some_and(|error| error.kind() == DatabaseErrorKind::UniqueViolation)
 }
 
 fn personal_org_slug(username: &str) -> String {
@@ -295,5 +278,32 @@ fn retry_slug(slug: &str) -> String {
 async fn rollback_user(created: &User) {
 	if let Err(del_err) = User::objects().delete(created.id).await {
 		error!("Failed to roll back user after org provisioning failure: {del_err}");
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reinhardt::core::exception::DatabaseError;
+	use rstest::rstest;
+
+	use super::{AppError, DatabaseErrorKind, is_unique_violation};
+
+	#[rstest]
+	#[case(DatabaseErrorKind::UniqueViolation, "constraint conflict", true)]
+	#[case(DatabaseErrorKind::Query, "duplicate unique row", false)]
+	#[case(DatabaseErrorKind::ForeignKeyViolation, "constraint conflict", false)]
+	fn personal_org_retry_uses_database_error_kind(
+		#[case] kind: DatabaseErrorKind,
+		#[case] message: &str,
+		#[case] expected: bool,
+	) {
+		// Arrange
+		let error = AppError::from(DatabaseError::new(kind, message));
+
+		// Act
+		let retryable = is_unique_violation(&error);
+
+		// Assert
+		assert_eq!(retryable, expected);
 	}
 }
