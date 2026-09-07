@@ -4,7 +4,7 @@
 #
 # This image is for local/CI development only — the production image lives in
 # `dashboard/Dockerfile` (multi-stage chef -> builder -> wasm -> runtime).
-# Both intentionally pin Rust 1.94.0 to match `rust-toolchain.toml`.
+# Both intentionally pin Rust 1.96.0 to match `rust-toolchain.toml`.
 
 FROM mcr.microsoft.com/devcontainers/rust:1-bookworm
 
@@ -24,17 +24,17 @@ RUN apt-get update \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
 
-# Pin the toolchain to 1.94.0 with the components needed by rust-analyzer.
+# Pin the toolchain to 1.96.0 with the components needed by rust-analyzer.
 # `cargo` will auto-honor `rust-toolchain.toml` once the workspace is mounted,
 # but installing the same version here lets `cargo install` below resolve
 # without an extra rustup network hop.
-RUN rustup toolchain install 1.94.0 \
+RUN rustup toolchain install 1.96.0 \
 		--component rustfmt \
 		--component clippy \
 		--component rust-src \
 		--component rust-analyzer \
-	&& rustup target add --toolchain 1.94.0 wasm32-unknown-unknown \
-	&& rustup default 1.94.0
+	&& rustup target add --toolchain 1.96.0 wasm32-unknown-unknown \
+	&& rustup default 1.96.0
 
 # Install cargo tooling. Each `cargo install` is a separate layer so that
 # bumping one tool does not invalidate the others' caches. Versions are
@@ -50,4 +50,6 @@ RUN cargo install bacon --locked --version 3.22.0
 RUN cargo install wasm-bindgen-cli --locked --version 0.2.126
 
 # `reinhardt-admin` provides the `fmt-all` subcommand used by `cargo make fmt-check`.
-RUN cargo install reinhardt-admin-cli --locked --version 0.1.0-rc.15
+# Keep both tools aligned with the Reinhardt version pinned in Cargo.toml.
+RUN cargo install reinhardt-admin-cli --locked --version "=0.4.0-alpha.14"
+RUN cargo install reinhardt-formatter --locked --version "=0.4.0-alpha.14"

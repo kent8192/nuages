@@ -38,6 +38,8 @@ browser-e2e = []
 
 [dependencies]
 reinhardt = { workspace = true }
+# Keep the explicit Pages crate available to generated macro paths on both targets.
+reinhardt-pages = { version = "=0.4.0-alpha.14", default-features = false }
 indexmap = "2"
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -46,6 +48,8 @@ thiserror = { workspace = true }
 # Server-side: full reinhardt with server, database, auth, admin, etc.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 reinhardt = { workspace = true }
+# Enable model-aware server error mapping; the facade does not forward this feature.
+reinhardt-pages = { version = "=0.4.0-alpha.14", default-features = false, features = ["model-server-fnset"] }
 reinhardt-cloud-types = { workspace = true }
 reinhardt-cloud-core = { workspace = true }
 reinhardt-cloud-k8s = { workspace = true }
@@ -128,7 +132,7 @@ anyhow = { workspace = true }
 proptest = "1.4"
 reqwest = { workspace = true }
 wiremock = "0.6"
-reinhardt-test = { version = "=0.4.0-alpha.11", features = ["e2e"] }
+reinhardt-test = { version = "=0.4.0-alpha.14", features = ["e2e"] }
 
 [lints]
 workspace = true
