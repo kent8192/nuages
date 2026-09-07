@@ -8,7 +8,7 @@
 //!     dispatch instead of building a backend with no registered
 //!     providers; and
 //!   * a populated `OAuthSettings` resolves to `OAuthBackendBox(Some(_))`
-//!     so views can immediately call `begin_auth` / `handle_callback`.
+//!     so views can immediately call contextual begin/callback methods.
 //!
 //! The no-providers / github-configured branches are also exercised by
 //! the inline factory tests in `services/oauth/backend.rs`; this module
@@ -22,6 +22,7 @@ mod tests {
 	use serial_test::serial;
 
 	use crate::apps::auth::services::oauth::{OAuthBackendBox, OAuthSettings, ProviderCredentials};
+	use crate::apps::auth::services::session::RedisUrl;
 	use crate::config::test_helpers::{make_test_di_context, set_provider_value};
 	use reinhardt::di::Depends;
 
@@ -91,6 +92,7 @@ mod tests {
 		]);
 		let ctx = make_test_di_context(|scope| {
 			set_provider_value(scope, populated_settings());
+			set_provider_value(scope, RedisUrl("redis://127.0.0.1:6379".into()));
 		});
 
 		// Act
@@ -120,6 +122,7 @@ mod tests {
 		]);
 		let ctx = make_test_di_context(|scope| {
 			set_provider_value(scope, populated_settings());
+			set_provider_value(scope, RedisUrl("redis://127.0.0.1:6379".into()));
 		});
 
 		// Act
