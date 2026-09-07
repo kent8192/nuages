@@ -62,8 +62,8 @@ cargo make runserver        # start the dashboard on http://localhost:8000
 | Component | Detail |
 | --- | --- |
 | Base image | `mcr.microsoft.com/devcontainers/rust:1-bookworm` |
-| Rust toolchain | 1.94.0 (matches `rust-toolchain.toml`) + `wasm32-unknown-unknown` |
-| Cargo tools | `cargo-make`, `cargo-nextest`, `cargo-audit`, `bacon`, `wasm-bindgen-cli` (0.2.126), `reinhardt-admin-cli` (0.1.0-rc.15) |
+| Rust toolchain | 1.96.0 (matches `rust-toolchain.toml`) + `wasm32-unknown-unknown` |
+| Cargo tools | `cargo-make`, `cargo-nextest`, `cargo-audit`, `bacon`, `wasm-bindgen-cli` (0.2.126), `reinhardt-admin-cli` and `reinhardt-formatter` (0.4.0-alpha.14) |
 | System tools | `protoc`, `binaryen` (`wasm-opt`), `lldb`, `postgresql-client`, `redis-tools`, `gh` |
 | Sidecar services | `postgres:17-bookworm`, `redis:7-alpine` (compose, healthchecked, container-internal) |
 | Forwarded ports | `8000` (dashboard) |

@@ -68,7 +68,7 @@ The Dashboard supports credential-based authentication and configured GitHub OAu
 
 ### Layout tour
 
-The v0.4.0-alpha.11 WASM client (`dashboard/src/client/router.rs`) defines one
+The v0.4.0-alpha.14 WASM client (`dashboard/src/client/router.rs`) defines one
 `ClientRouter` tree. `/login` and `/register` are public root routes. The
 authenticated `#[layout]` Dashboard shell renders `/`, `/account`, `/clusters`,
 `/deployments`, and `/github` as child routes through `Outlet`. The HTTP server
@@ -82,11 +82,21 @@ continues to mount API namespaces and the admin panel separately:
 6. **Auth API** (`/auth/`) — login, registration, OAuth callback, and session endpoints
 7. **Admin panel** (`/api/admin/`) — operator-level administration UI (reinhardt-admin)
 
+Shared route declarations use the non-generic `UnifiedRouter` on native and
+WASM. Native `.client(...)` closures are type-checked without constructing
+client state; `ClientLauncher` owns the one live client route tree on WASM.
+The layout's asynchronous navigation guard checks the session before protected
+children mount, while the mounted shell retains its 60-second session check.
+
 Direct `page!({ ... })` bodies automatically capture cloneable local values in
-alpha.11; reserve explicit closure arguments for reusable page factories.
-Generated ClientForm submissions expose the same typed method on native and
-WASM, while model-backed forms keep their client-only typed response for
-one-time token delivery.
+v0.4.0; reserve explicit closure arguments for reusable page factories.
+Authentication DTOs use `#[dto(schema)]` and `#[client_form]`. Generated server
+mutations own pending/error state and prevent duplicate submissions on both
+targets. ClientForm controls use `bind:` with typed runtime fields to update
+values in place and preserve focus. The named cluster ModelForm uses public
+field setters with bound signals for its custom controls; successful reset
+synchronizes their values without DOM lookup. Password values stay out of
+rendered HTML attributes.
 
 ### Client data fetching
 
@@ -110,6 +120,12 @@ unified router. Configure its separate `[ws_origin]` allow-list alongside
 The **Deployments** section (`/deployments/`) presents the PaaS-side records that correspond to `Project` CRDs in the cluster. Each entry shows the project name, the associated cluster, and deployment metadata recorded by the Dashboard when a deploy was triggered via the CLI or directly through the API.
 
 The **Clusters** section (`/clusters/`) shows registered Kubernetes clusters (cluster-management records stored in the Dashboard's own database, not the operator's CRD list). Its generated creation form accepts only a cluster name and Kubernetes API URL; the owning organization, active state, and agent token state are set by the server.
+
+The named `ClusterCreateForm` contract is generated from the persistence model
+on native and WASM, without a separate browser model. Its server boundary runs
+generated trim and validation before persistence. Registration and cluster
+forms map structured database errors through model constraint metadata,
+keeping unmapped driver diagnostics out of user-visible errors.
 
 Dashboard operation forms use inventory-backed selectors for cluster, repository, and deployment targets. Operators choose records by recognizable names and metadata; the form posts the corresponding persisted ID internally.
 
@@ -196,7 +212,7 @@ The image also:
 - **ORM**: reinhardt::db (built-in ORM from the `reinhardt` crate)
 - **Supported engines**: PostgreSQL — the only engine declared in `dashboard/settings/base.toml` (`engine = "postgresql"`)
 - **Migration source**: `dashboard/migrations/` — six app-level initial migrations (`auth/`, `clusters/`, `default/`, `deployments/`, `github/`, and `organizations/`) plus generated follow-up migrations; all migrations are Rust source files
-- **Migration tooling**: generate migrations only with the authoritative command, then apply the checked-in migration set through the `manage` binary:
+- **Migration tooling**: generate migrations for model/schema changes only with the authoritative command, then apply the checked-in migration set through the `manage` binary:
 
 ```bash
 cd dashboard && cargo make makemigrations
@@ -205,11 +221,24 @@ cd dashboard && cargo run --bin manage migrate
 
 The migration command is provided by reinhardt-web's built-in `migrate` management command (invoked through `execute_from_command_line()` in `dashboard/src/bin/manage.rs`). Migration files are generated source and must not be hand-edited.
 
+The alpha.14 source upgrade adapts existing migration files to the
+non-exhaustive `Migration` and `ColumnDefinition` APIs offline, preserving
+schema and migration history. Run the pinned CLI from the repository root:
+
+```bash
+reinhardt-admin migrations upgrade-source dashboard/migrations
+reinhardt-admin migrations upgrade-source dashboard/migrations --check
+```
+
+The format workflow runs the source-version check to reject obsolete generated
+files. See [the complete alpha.11–alpha.14 PR coverage](../development/REINHARDT_ALPHA14_MIGRATION.md)
+for release scope and application changes.
+
 > **Breaking v0.4.0-alpha.11 migration reset**: this initial migration history supports only an empty PostgreSQL database. It does not support inheriting an existing Dashboard migration history, in-place data migration, or `fake-initial` compatibility.
 
-### v0.4.0-alpha.11 PR review checklist
+### v0.4.0-alpha.14 PR review checklist
 
-- **Upgrade, new, scaffolding** (`source-command-reinhardt-upgrade`, `source-command-reinhardt-new`, `scaffolding`): confirm every direct and published Reinhardt framework dependency uses `0.4.0-alpha.11`. The only lockfile exception is the official, transitive `reinhardt-event-catalog 0.4.0-alpha.1`, which alpha.11 framework crates explicitly require because no alpha.11 event-catalog release exists. Use generated-project structure only for comparison and do not re-scaffold the Dashboard.
+- **Upgrade, new, scaffolding** (`source-command-reinhardt-upgrade`, `source-command-reinhardt-new`, `scaffolding`): confirm every direct and published Reinhardt framework dependency uses `0.4.0-alpha.14`. The official, transitive `reinhardt-event-catalog 0.4.0-alpha.1` remains the published framework's lockfile exception. Use Rust 1.96.0 from `rust-toolchain.toml` and pin `reinhardt-admin-cli` and `reinhardt-formatter` to `0.4.0-alpha.14`. Use generated-project structure only for comparison and do not re-scaffold the Dashboard.
 - **Configuration, architecture, migration** (`configuration`, `architecture`, `migration`): verify the single client route tree, server configuration boundaries, generated migration history, and the empty-PostgreSQL-only upgrade contract.
 - **Pages, macros, signals** (`pages`, `macros`, `signals`): verify public versus authenticated layout placement, `Outlet` nesting, typed event handlers, and reactive query/form state.
 - **API, auth, authorization, dependency injection, modeling, admin** (`api-development`, `authentication`, `authorization`, `dependency-injection`, `modeling`, `admin`): verify server-function input ownership, session revalidation, organization scoping, injected services, database constraints, and admin registrations.
@@ -217,7 +246,7 @@ The migration command is provided by reinhardt-web's built-in `migrate` manageme
 
 ### Component styles and stylesheet extraction
 
-The v0.4.0-alpha.11 Dashboard follows the Reinhardt Pages Project Template for
+The v0.4.0-alpha.14 Dashboard follows the Reinhardt Pages Project Template for
 component styles. Each application owns `dashboard/src/apps/<app>/client/style.rs`
 and exports it from its `client.rs` with `pub mod style;`. Shared primitives
 that are intentionally cross-app belong in `dashboard/src/shared/client/style.rs`.
@@ -324,7 +353,7 @@ The Dashboard runtime image defaults `REINHARDT_ENV=production`, which loads `pr
 
 ### GitHub OAuth
 
-GitHub OAuth is enabled when all required provider settings and the OAuth token encryption key are present in the runtime environment. The login and registration pages show only configured providers. Normal OAuth sign-in uses its standard signed state flow and establishes a Dashboard session independently of account linking. Starting account linking from `/account` creates a signed, short-lived intent bound to the initiating valid session. Its callback requires the current `sessionid` to remain valid and match both the intent's user and session binding before it links the provider identity; logout, session rotation, or a session swap invalidates the link flow.
+GitHub OAuth is enabled when all required provider settings and the OAuth token encryption key are present in the runtime environment. The login and registration pages show only configured providers. The framework's `AsyncSessionStateStore` stores OAuth state and PKCE verifiers in Redis and atomically consumes each state once across replicas. A short-lived HttpOnly cookie holds an opaque browser-binding nonce. Normal sign-in establishes a Dashboard session independently of account linking. Linking from `/account` additionally binds the flow to the current session and stores the initiating user identity only in server-side context; logout, session rotation, or a session swap invalidates the link flow.
 
 The dashboard persists GitHub OAuth access tokens only after encrypting them with `REINHARDT_CLOUD_OAUTH_TOKEN_ENCRYPTION_KEY`. Set this variable to a base64-encoded 32-byte key before enabling GitHub OAuth. The stored token is used to verify GitHub App setup callbacks against `/user/installations`; OAuth storage APIs still return tokenless account records to normal authentication callers.
 
@@ -366,7 +395,7 @@ cd dashboard && cargo run --bin manage migrate
 The v0.4.0-alpha.11 migration reset is an exception: provision a new empty
 PostgreSQL database, apply the complete checked-in migration set (the six
 initial migrations and any generated follow-ups) with the command above, then
-deploy the alpha.11 image. No supported existing-history, data-migration, or
+deploy the Dashboard image. No supported existing-history, data-migration, or
 `fake-initial` upgrade path exists for this reset.
 
 #### Multi-tenancy

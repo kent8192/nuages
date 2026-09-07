@@ -8,6 +8,7 @@ A Reinhardt project.
 - Deployment guide for Platform Operators → [`../docs/tools/dashboard.md#deployment-of-the-dashboard-itself-for-platform-operators`](../docs/tools/dashboard.md#deployment-of-the-dashboard-itself-for-platform-operators)
 - Source of truth for Dashboard usage and configuration is the guide above; this README is a contributor-oriented summary.
 - Deployment flow & component responsibilities → [`../docs/architecture/deployment-flow.md`](../docs/architecture/deployment-flow.md)
+- Framework alpha.11–alpha.14 migration coverage → [PR coverage](../docs/development/REINHARDT_ALPHA14_MIGRATION.md)
 
 ## Getting Started
 
@@ -37,7 +38,8 @@ cargo run --bin manage migrate
 
 Install [reinhardt-web](https://github.com/kent8192/reinhardt-web) CLI tools:
 ```bash
-cargo install reinhardt-admin
+cargo install reinhardt-admin-cli --version "=0.4.0-alpha.14" --locked
+cargo install reinhardt-formatter --version "=0.4.0-alpha.14" --locked
 ```
 
 ```bash
@@ -57,7 +59,7 @@ cargo make runserver-watch  # Start server with auto-reload (requires bacon)
 
 ### Component styles
 
-The v0.4.0-alpha.11 Dashboard follows the Reinhardt Pages Project Template:
+The v0.4.0-alpha.14 Dashboard follows the Reinhardt Pages Project Template:
 each app owns its component stylesheet at
 `src/apps/<app>/client/style.rs` and exports it from `client.rs` with
 `pub mod style;`. Cross-app primitives belong in
@@ -97,6 +99,11 @@ without raw-identifier HTML attributes. Import Reinhardt attribute macros and
 DI parameter types at module scope so annotations and handler signatures stay
 consistent across Dashboard apps.
 
+Auth controls use `bind:` with generated ClientForm runtime fields to update
+input values in place and preserve focus while typing. The runtime owns field
+values, touched/dirty state, and resets; password values stay out of rendered
+HTML attributes.
+
 ### Database
 
 ```bash
@@ -112,24 +119,45 @@ PostgreSQL database. Existing migration histories, in-place data migration,
 and `fake-initial` compatibility are not provided.
 
 `cd dashboard && cargo make makemigrations` is the authoritative way to
-regenerate migrations. Migration files are generated source and must not be
-hand-edited.
+generate migrations for model/schema changes. Migration files are generated
+source and must not be hand-edited.
 
-Cluster creation uses a generated ModelForm that accepts only `name` and
-`api_url`; the owning organization, active state, and agent token state are
-set by the server.
+The alpha.14 source upgrade adapts existing migration files to the
+non-exhaustive `Migration` and `ColumnDefinition` APIs offline, preserving
+schema and migration history. Run the pinned CLI from the repository root:
+
+```bash
+reinhardt-admin migrations upgrade-source dashboard/migrations
+reinhardt-admin migrations upgrade-source dashboard/migrations --check
+```
+
+Cluster creation uses the named `ClusterCreateForm` contract generated directly
+from the `Cluster` model on both native and WASM. It accepts only `name` and
+`api_url`, trims and validates them on the server, and leaves organization,
+active state, and agent token state under server control. Database conflicts
+are mapped through model constraint metadata to safe form errors.
 
 ### Client routes and data
 
-The v0.4.0-alpha.11 client uses one reinhardt-pages `ClientRouter` tree. The
+The v0.4.0-alpha.14 client uses one reinhardt-pages `ClientRouter` tree. The
 `#[layout]` Dashboard shell renders its child routes through `Outlet`:
 `/login` and `/register` are public, while `/`, `/account`, `/clusters`,
 `/deployments`, and `/github` are authenticated children.
+The layout's asynchronous navigation guard verifies the session before a
+protected child mounts; the mounted shell also revalidates every 60 seconds.
+
+Shared route declarations use the non-generic `UnifiedRouter` on native and
+WASM. Native `.client(...)` closures are type-checked without constructing
+client state; `ClientLauncher` owns the one live client route tree on WASM.
 
 Direct `page!({ ... })` bodies automatically capture cloneable local values in
-alpha.11; use an explicit closure form only when a reusable page factory is
-needed. Generated ClientForm submissions have the same typed method on native
-and WASM, so auth forms share one action path.
+v0.4.0; use an explicit closure form only when a reusable page factory is
+needed. Authentication DTOs use `#[dto(schema)]` and `#[client_form]` to generate
+schema metadata and typed form companions. Forms use generated server mutations
+for pending/error state and duplicate-submit protection on both targets.
+ClientForm controls bind to typed runtime fields; the named ModelForm uses its
+public field setters with bound signals. Successful reset synchronizes the
+controls without DOM lookup, and password values stay out of HTML attributes.
 
 Client reads use Query Client V2 generated server-function query descriptors
 with `use_query`. The Launcher or SSR runtime owns the QueryClient; pages do
@@ -154,11 +182,12 @@ renewal and recovery compare the exact active timestamp so only one can win.
 
 ### OAuth account linking
 
-Normal GitHub OAuth sign-in remains independent of account linking. Starting a
-link from `/account` creates a signed, short-lived intent bound to the
-initiating valid session. The callback links an identity only when its current
-`sessionid` still validates and matches that intent's user and session binding;
-logout, session rotation, or a session swap invalidates the link flow.
+GitHub OAuth state and PKCE verifiers use the framework's Redis-backed
+`AsyncSessionStateStore`; callbacks atomically consume state across replicas.
+The browser receives only a short-lived opaque binding nonce in an HttpOnly
+cookie. Account linking additionally binds the flow to the initiating valid
+session and stores its user identity only in server-side context. Logout,
+session rotation, or a session swap invalidates the link flow.
 Membership removal is authoritative; reauthentication never recreates a
 revoked Personal Organization membership.
 
