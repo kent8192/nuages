@@ -4,12 +4,12 @@ use std::time::Duration;
 
 use reinhardt::pages::component;
 use reinhardt::pages::event::ClickEvent;
-use reinhardt::pages::page;
 use reinhardt::pages::prelude::{
 	ClassToken, NavigationContext, NavigationDecision, NavigationGuardError, Outlet, Page,
 	QueryOptions, QuerySnapshot, QueryStatus, use_query, use_server_mutation,
 };
 use reinhardt::pages::server_fn::ServerFnError;
+use reinhardt::pages::{NavigationType, navigate_or_reload, navigation_guard, page};
 
 use crate::apps::auth::server_fn::logout::logout;
 use crate::apps::auth::server_fn::me::me;
@@ -87,7 +87,7 @@ fn dashboard_navigation_decision(
 ///
 /// The static dashboard shell authenticates in the browser. Native route
 /// execution has no browser cookie context and therefore fails closed.
-#[reinhardt::pages::navigation_guard]
+#[navigation_guard]
 pub(crate) async fn require_dashboard_session(
 	_context: NavigationContext,
 ) -> Result<NavigationDecision, NavigationGuardError> {
@@ -102,20 +102,6 @@ pub(crate) async fn require_dashboard_session(
 			"A browser session is required",
 		)))
 	}
-}
-
-#[cfg(wasm)]
-fn replace_document(location: &str) -> Result<(), ServerFnError> {
-	let window = web_sys::window()
-		.ok_or_else(|| ServerFnError::server(500, "Browser window is unavailable"))?;
-	window.location().replace(location).map_err(|error| {
-		ServerFnError::server(500, format!("Unable to leave dashboard: {error:?}"))
-	})
-}
-
-#[cfg(not(wasm))]
-fn replace_document(_location: &str) -> Result<(), ServerFnError> {
-	Ok(())
 }
 
 /// Render the shared dashboard chrome around its active child route.
@@ -136,7 +122,9 @@ pub fn dashboard_layout(outlet: Outlet) -> Page {
 				let logged_out = request.await?;
 				reinhardt::pages::auth::auth_state().logout();
 				reinhardt::pages::auth::invalidate_authentication();
-				replace_document(&login_href)?;
+				navigate_or_reload(login_href, NavigationType::Replace).map_err(|error| {
+					ServerFnError::application(format!("Unable to leave dashboard: {error}"))
+				})?;
 				Ok::<_, ServerFnError>(logged_out)
 			}
 		}
@@ -158,7 +146,7 @@ pub fn dashboard_layout(outlet: Outlet) -> Page {
 	page!({
 		div { {
 			let gate = match self::dashboard_gate(session.snapshot()) {
-				DashboardGate::LoginRequired if replace_document(&login_href).is_err() => {
+				DashboardGate::LoginRequired if navigate_or_reload(login_href.clone(), NavigationType::Replace).is_err() => {
 					DashboardGate::Failed("Unable to redirect to sign in.".to_string())
 				}
 				gate => gate,

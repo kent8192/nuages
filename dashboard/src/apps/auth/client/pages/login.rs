@@ -3,34 +3,20 @@
 use reinhardt::pages::component;
 use reinhardt::pages::component::Page;
 use reinhardt::pages::event::SubmitEvent;
-use reinhardt::pages::page;
 #[cfg(test)]
 use reinhardt::pages::prelude::FieldError;
 #[cfg(all(test, native))]
 use reinhardt::pages::prelude::UseFormAsyncSubmitOutcome;
-use reinhardt::pages::prelude::{
-	Callback, FormState, QueryClient, UseFormReturn, queries, use_callback, use_form,
-};
+use reinhardt::pages::prelude::{Callback, FormState, UseFormReturn, use_callback, use_form};
 use reinhardt::pages::reactive::ExplicitDeps;
 use reinhardt::pages::server_fn::ServerFnError;
+use reinhardt::pages::{NavigationType, navigate_or_reload, page};
 
 use crate::apps::auth::client::components::{auth_layout, oauth_buttons};
 use crate::apps::auth::client::style::STYLES;
 #[cfg(test)]
 use crate::apps::auth::serializers::LoginRequest;
 use crate::apps::auth::serializers::login::{LoginRequestClientForm, LoginRequestClientFormField};
-use crate::apps::auth::server_fn::linked_accounts::list_linked_oauth_accounts;
-use crate::apps::auth::server_fn::me::me;
-use crate::apps::auth::server_fn::oauth_providers::list_oauth_providers;
-use crate::apps::clusters::server_fn::list_clusters_for_current_org;
-use crate::apps::deployments::server_fn::{
-	deployment_logs_for_current_org, list_deployment_previews_for_current_org,
-	list_deployments_for_current_org,
-};
-use crate::apps::github::server_fn::{
-	get_github_onboarding_for_current_org, list_github_project_previews_for_current_org,
-	list_github_repositories_for_current_org, list_github_repositories_for_installation,
-};
 use crate::shared::client::routes::route_href;
 use crate::shared::client::style::STYLES as SHARED_STYLES;
 
@@ -161,47 +147,18 @@ fn render_login_form(view: LoginFormView) -> Page {
 	})
 }
 
-fn evict_authenticated_query_families(query_client: &QueryClient) {
-	query_client.remove_family(me::family());
-	query_client.remove_family(list_oauth_providers::family());
-	query_client.remove_family(list_linked_oauth_accounts::family());
-	query_client.remove_family(list_clusters_for_current_org::family());
-	query_client.remove_family(list_deployments_for_current_org::family());
-	query_client.remove_family(list_deployment_previews_for_current_org::family());
-	query_client.remove_family(deployment_logs_for_current_org::family());
-	query_client.remove_family(get_github_onboarding_for_current_org::family());
-	query_client.remove_family(list_github_repositories_for_current_org::family());
-	query_client.remove_family(list_github_repositories_for_installation::family());
-	query_client.remove_family(list_github_project_previews_for_current_org::family());
-}
-
-#[cfg(wasm)]
-fn replace_document(location: &str) -> Result<(), ServerFnError> {
-	let window = web_sys::window()
-		.ok_or_else(|| ServerFnError::server(500, "Browser window is unavailable"))?;
-	window
-		.location()
-		.replace(location)
-		.map_err(|error| ServerFnError::server(500, format!("Unable to finish sign in: {error:?}")))
-}
-
-#[cfg(not(wasm))]
-fn replace_document(_location: &str) -> Result<(), ServerFnError> {
-	Ok(())
-}
-
 /// Render the login page.
 #[component("/login", name = "auth:login_page")]
 pub fn login_page() -> Page {
 	let login_form = LoginRequestClientForm::new();
-	let query_client = queries();
 	let home_href = route_href("dashboard:home", "/");
-	let submit_query_client = query_client.clone();
 	let submit_home_href = home_href.clone();
 	let login_runtime = use_form(&login_form)
 		.on_submit_success(move |runtime| {
-			evict_authenticated_query_families(&submit_query_client);
-			if let Err(error) = replace_document(&submit_home_href) {
+			reinhardt::pages::auth::invalidate_authentication();
+			if let Err(error) =
+				navigate_or_reload(submit_home_href.clone(), NavigationType::Replace)
+			{
 				runtime.apply_server_error(&ServerFnError::application(format!(
 					"Signed in, but navigation to the dashboard failed: {error}"
 				)));
@@ -246,10 +203,12 @@ mod tests {
 	use std::rc::Rc;
 
 	#[cfg(native)]
+	use crate::apps::auth::server_fn::me::me;
+	#[cfg(native)]
 	use reinhardt::pages::prelude::{QueryHandle, QueryOptions, QueryStatus, use_query};
 	use reinhardt::pages::reactive::ReactiveScope;
 	#[cfg(native)]
-	use reinhardt::pages::testing::component::render;
+	use reinhardt::pages::testing::component::{Role, render};
 	use rstest::rstest;
 
 	#[cfg(native)]
@@ -342,9 +301,8 @@ mod tests {
 	fn current_user_query_probe(
 		user: UserInfo,
 		fetches: Rc<Cell<u32>>,
-		captured: Rc<RefCell<Option<(QueryClient, QueryHandle<UserInfo, ServerFnError>)>>>,
+		captured: Rc<RefCell<Option<QueryHandle<UserInfo, ServerFnError>>>>,
 	) -> Page {
-		let query_client = queries();
 		let query = use_query(
 			me::family().query((), move || {
 				fetches.set(fetches.get() + 1);
@@ -353,19 +311,27 @@ mod tests {
 			}),
 			QueryOptions::new(),
 		);
-		*captured.borrow_mut() = Some((query_client, query.clone()));
-		Page::reactive(move || {
-			query
-				.data()
-				.map(|user| Page::text(user.username))
-				.unwrap_or_else(|| Page::text("Loading"))
-		})
+		*captured.borrow_mut() = Some(query.clone());
+		Page::fragment(vec![
+			Page::reactive(move || {
+				query
+					.data()
+					.map(|user| Page::text(user.username))
+					.unwrap_or_else(|| Page::text("Loading"))
+			}),
+			page!({
+				button {
+					@click: |_| reinhardt::pages::auth::invalidate_authentication(),
+					"Invalidate authentication"
+				}
+			}),
+		])
 	}
 
 	#[cfg(native)]
 	#[rstest]
 	#[tokio::test]
-	async fn login_evicts_authenticated_query_cache_before_document_reload() {
+	async fn login_invalidates_authentication_cache_before_navigation() {
 		// Arrange
 		let alice = UserInfo {
 			id: "user-alice".to_owned(),
@@ -380,16 +346,21 @@ mod tests {
 			move || current_user_query_probe(alice, fetches, captured)
 		});
 		first_document.settle().await;
-		let (query_client, query) = captured
+		let query = captured
 			.borrow_mut()
 			.take()
 			.expect("the mounted current-user query should be captured");
+		assert_eq!(
+			query.data().map(|user| user.username),
+			Some("alice".to_owned())
+		);
 
 		// Act
-		evict_authenticated_query_families(&query_client);
+		first_document
+			.get_by_role(Role::Button, "Invalidate authentication")
+			.click();
 
 		// Assert
-		assert_eq!(first_document.pretty(), "alice\n");
 		assert_eq!(fetches.get(), 1);
 		assert_eq!(query.data(), None);
 		assert_eq!(query.snapshot().status, QueryStatus::Pending);
