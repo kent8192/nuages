@@ -42,7 +42,7 @@ framework/tool dependency supplies the change without a Cloud implementation.
 | [#6238](https://github.com/kent8192/reinhardt-web/pull/6238) | Structured DB constraints and model-aware errors | Registration/cluster conflicts use model constraint metadata; Personal Organization retries use `DatabaseErrorKind`. Native `reinhardt-pages/model-server-fnset` enables the public mapper without adding DB code to WASM. |
 | [#6239](https://github.com/kent8192/reinhardt-web/pull/6239) | Native filesystem test helper | Upstream test-only repair; no consumer implementation. |
 | [#6240](https://github.com/kent8192/reinhardt-web/pull/6240) | Typed field binding and synchronized reset | ClientForm controls use generated runtime field enums. Custom cluster ModelForm controls use public setters/bound signals and reset callbacks, replacing DOM ID resets. |
-| [#6244](https://github.com/kent8192/reinhardt-web/pull/6244) | Async layout/route guards | The shared dashboard layout checks `me` before protected children mount: 401 redirects to login, 403 forbids navigation. Login evicts authenticated query families; logout invalidates framework authentication. Both retain full-document session transitions. |
+| [#6244](https://github.com/kent8192/reinhardt-web/pull/6244) | Async layout/route guards | The shared dashboard layout checks `me` before protected children mount: 401 redirects to login, 403 forbids navigation. Login and logout invalidate framework authentication, including cached queries. Both use the target-neutral replacement-navigation API. |
 | [#6248](https://github.com/kent8192/reinhardt-web/pull/6248) | Named target-neutral ModelForm contracts | The real `Cluster` model declares `form(name = ClusterCreateForm, fields(name, api_url))`; its generated contract replaces the WASM shadow model. Native-only model relations remain excluded from the browser build. |
 | [#6249](https://github.com/kent8192/reinhardt-web/pull/6249) | Authoritative generated normalization/validation | Cluster creation calls generated `clean_and_validate` before persistence; model form metadata trims name/URL and applies declared constraints. Server request validation remains authoritative for ClientForm DTOs. |
 | [#6250](https://github.com/kent8192/reinhardt-web/pull/6250) | Admin object-scope/alias regression repair and page security feature wiring | Inherited by existing `UserAdmin`, `ClusterAdmin`, and `DeploymentAdmin` registrations; no alternate admin view or feature workaround is needed. |
@@ -62,9 +62,25 @@ framework/tool dependency supplies the change without a Cloud implementation.
   browser cookie context and fails closed. The mounted shell retains its
   existing 60-second session revalidation. Its `hidden` attribute uses
   `PageElement::reactive_attr` so session changes reveal/hide the same form DOM.
+- Session transitions use `invalidate_authentication` and `navigate_or_reload`
+  with replacement navigation, so cached identities are cleared without
+  maintaining an application-specific query-family list or browser-only helpers.
 - Alpha.14 named ModelForms do not expose ClientForm's typed field bindings.
   Cluster custom controls therefore use the released string field setters
   and signals; the model remains the sole source of form/schema metadata.
+- Cluster updates trim the name and API URL before DTO validation, matching
+  creation's normalization order and character-based length constraints.
+- Overview counts use the organization-scoped cluster and deployment queries.
+  Loading or failed queries never imply an empty organization. Health badges
+  require an authoritative health source and are omitted from the overview.
+- The log viewer is compiled only in the WASM component module. Its shared
+  style helpers remain covered by native tests; native routes omit the viewer.
+- Browser E2E sessions own a dedicated transport runtime and delete their
+  WebDriver session in `Drop`, including assertion failures and cancellation.
+- The standalone gRPC startup remains necessary: Cloud's tonic 0.13 services,
+  JWT/token validators, health/reflection registration, and shutdown hook are
+  not registered with `UnifiedRouter`. Removing `config/grpc.rs` requires
+  migrating that complete service configuration and its tonic/prost versions.
 - Source-version conversion does not change migration identities or schema.
   The alpha.11 empty-PostgreSQL baseline requirement remains in force.
 
@@ -76,6 +92,9 @@ cluster normalization, public/protected route metadata, and native guard
 rejection without protected HTML. WASM browser tests cover guard denial before
 cluster fetching, accepted navigation/history, auth input identity/focus, and
 cluster form submission/reset through the generated server-function transport.
+Login navigation also exercises organization-scoped overview counts, while
+native tests cover authentication cache invalidation and WebDriver session
+deletion on normal return, assertion failure, and test-future cancellation.
 
 Run the repository's `cargo make test`, `cargo make fmt-check`,
 `cargo make clippy-check`, and workspace check/build/doc commands with the
