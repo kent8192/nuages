@@ -285,3 +285,53 @@ pub static STYLES: DeploymentsStyles = style! {
 		color: #fca5a5;
 	}
 };
+
+/// Select the generated color token for a log level.
+#[cfg(any(wasm, test))]
+pub(super) fn log_level_class(level: &str) -> reinhardt::pages::prelude::ClassToken {
+	match level {
+		"error" => STYLES.log_line_error(),
+		"warn" => STYLES.log_line_warning(),
+		"debug" => STYLES.log_line_muted(),
+		_ => STYLES.log_line_default(),
+	}
+}
+
+/// Combine the log line structure with its level-specific color.
+#[cfg(any(wasm, test))]
+pub(super) fn log_line_class(level: &str) -> reinhardt::pages::style::ClassList {
+	STYLES.log_line() + log_level_class(level)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::{STYLES, log_level_class, log_line_class};
+	use rstest::rstest;
+
+	#[rstest]
+	fn test_level_class_maps_known_levels() {
+		// Act
+		let error = log_level_class("error");
+		let warning = log_level_class("warn");
+		let muted = log_level_class("debug");
+		let default = log_level_class("unknown");
+
+		// Assert
+		assert_eq!(error.as_str(), STYLES.log_line_error().as_str());
+		assert_eq!(warning.as_str(), STYLES.log_line_warning().as_str());
+		assert_eq!(muted.as_str(), STYLES.log_line_muted().as_str());
+		assert_eq!(default.as_str(), STYLES.log_line_default().as_str());
+	}
+
+	#[rstest]
+	fn test_log_line_class_composes_generated_base_and_level_tokens() {
+		// Act
+		let class = log_line_class("error");
+
+		// Assert
+		assert_eq!(
+			class.as_str(),
+			(STYLES.log_line() + STYLES.log_line_error()).as_str()
+		);
+	}
+}

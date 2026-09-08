@@ -16,6 +16,7 @@ use reinhardt::pages::router::Query;
 use reinhardt::pages::server_fn::ServerFnError;
 
 use crate::apps::clusters::server_fn::{ClusterInfo, list_clusters_for_current_org};
+#[cfg(wasm)]
 use crate::apps::deployments::client::components::log_viewer::log_viewer_container;
 use crate::apps::deployments::client::components::preview_list::{
 	render_preview_list, render_project_identity,
@@ -1171,7 +1172,10 @@ pub fn deployments_list_page(Query(logs): Query<Option<i64>>) -> Page {
 		confirmed: delete_confirmed,
 	});
 
+	#[cfg(wasm)]
 	let logs = log_viewer_container(log_deployment_id);
+	#[cfg(not(wasm))]
+	let logs = Page::Empty;
 	let deployments_for_inventory = deployments.clone();
 	let deployments_for_logs = deployments.clone();
 	let deployments_for_edit = deployments.clone();

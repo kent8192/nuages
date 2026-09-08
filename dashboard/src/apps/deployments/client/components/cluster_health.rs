@@ -2,19 +2,17 @@
 //!
 //! Renders a `<div id="cluster-health">` container populated with one row
 //! per (`cluster_name`, `agent_id`) pair from incoming
-//! [`ClusterHealthPayload`] WebSocket messages. Each (cluster, agent) key
+//! `ClusterHealthPayload` WebSocket messages. Each (cluster, agent) key
 //! uses a stable DOM id so subsequent updates replace the existing row
 //! rather than duplicating it.
 
-#[cfg(wasm)]
 use reinhardt::pages::component::Page;
-#[cfg(wasm)]
 use reinhardt::pages::page;
 
-#[cfg(any(wasm, test))]
 use crate::apps::deployments::client::style::STYLES;
 #[cfg(wasm)]
 use crate::shared::client::components::toast::html_escape;
+#[cfg(wasm)]
 use crate::shared::ws_messages::ClusterHealthPayload;
 
 /// DOM id of the cluster health container.
@@ -22,7 +20,6 @@ use crate::shared::ws_messages::ClusterHealthPayload;
 const CONTAINER_ID: &str = "cluster-health";
 
 /// Render the cluster health container (empty; rows added dynamically).
-#[cfg(wasm)]
 pub fn cluster_health_container() -> Page {
 	page!({
 		div {
@@ -30,11 +27,6 @@ pub fn cluster_health_container() -> Page {
 			class: STYLES.cluster_health(),
 		}
 	})
-}
-
-#[cfg(not(wasm))]
-pub fn cluster_health_container() -> reinhardt::pages::component::Page {
-	reinhardt::pages::component::Page::Empty
 }
 
 /// Insert or replace a cluster health row for the given payload.
@@ -119,11 +111,6 @@ pub fn row_id(cluster_name: &str, agent_id: &str) -> String {
 	let agent = agent_id.replace([' ', '/'], "-");
 	format!("cluster-health-{cluster}-{agent}")
 }
-
-// Non-WASM stub so server-side callers (and unit tests) can compile.
-#[cfg(not(wasm))]
-#[allow(dead_code)]
-pub fn update(_payload: ClusterHealthPayload) {}
 
 #[cfg(test)]
 mod tests {

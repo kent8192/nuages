@@ -5,30 +5,22 @@
 //! generated log-line token. The DOM buffer is capped at [`MAX_LINES`] entries to bound
 //! memory — older lines are removed from the front when the cap is reached.
 
-#[cfg(wasm)]
 use reinhardt::pages::component::Page;
-#[cfg(wasm)]
 use reinhardt::pages::page;
-#[cfg(wasm)]
 use reinhardt::pages::prelude::{QueryHandle, QueryOptions, QueryStatus, Signal, use_query};
 
-use crate::apps::deployments::client::style::STYLES;
-#[cfg(wasm)]
+use crate::apps::deployments::client::style::{STYLES, log_line_class};
 use crate::apps::deployments::server_fn::{DeploymentLogInfo, deployment_logs_for_current_org};
-#[cfg(wasm)]
 use crate::shared::client::components::toast::html_escape;
 use crate::shared::ws_messages::{AppLogPayload, BuildLogPayload};
 
 /// Maximum number of log lines retained in the DOM buffer.
-#[cfg(any(wasm, test))]
 const MAX_LINES: usize = 1000;
 
 /// DOM id of the log viewer container.
-#[cfg(wasm)]
 const CONTAINER_ID: &str = "log-viewer";
 
 /// Render the log viewer container with historical lines for the selected deployment.
-#[cfg(wasm)]
 pub fn log_viewer_container(deployment_id: Signal<String>) -> Page {
 	Page::reactive(move || {
 		let deployment_id = deployment_id.get();
@@ -44,7 +36,6 @@ pub fn log_viewer_container(deployment_id: Signal<String>) -> Page {
 	})
 }
 
-#[cfg(wasm)]
 fn log_viewer_empty() -> Page {
 	page!({
 		pre {
@@ -58,7 +49,6 @@ fn log_viewer_empty() -> Page {
 	})
 }
 
-#[cfg(wasm)]
 fn render_log_history(
 	history: &QueryHandle<Vec<DeploymentLogInfo>, reinhardt::pages::server_fn::ServerFnError>,
 ) -> Page {
@@ -143,14 +133,6 @@ fn render_log_history(
 	})
 }
 
-#[cfg(not(wasm))]
-pub fn log_viewer_container(
-	_deployment_id: reinhardt::pages::prelude::Signal<String>,
-) -> reinhardt::pages::component::Page {
-	reinhardt::pages::component::Page::Empty
-}
-
-#[cfg(wasm)]
 fn render_history_line(line: &DeploymentLogInfo) -> Page {
 	let timestamp = line.timestamp.clone();
 	let level = line.level.clone();
@@ -164,7 +146,6 @@ fn render_history_line(line: &DeploymentLogInfo) -> Page {
 }
 
 /// Append an application log line to the viewer.
-#[cfg(wasm)]
 pub fn append(payload: AppLogPayload) {
 	append_line(
 		&payload.timestamp,
@@ -175,7 +156,6 @@ pub fn append(payload: AppLogPayload) {
 }
 
 /// Append a build log line to the viewer.
-#[cfg(wasm)]
 pub fn append_build(payload: BuildLogPayload) {
 	append_line(
 		&payload.timestamp,
@@ -186,7 +166,6 @@ pub fn append_build(payload: BuildLogPayload) {
 }
 
 /// Render a single log line into the viewer, enforcing the line cap.
-#[cfg(wasm)]
 fn append_line(timestamp: &str, source: &str, level: &str, message: &str) {
 	let Some(document) = web_sys::window().and_then(|w| w.document()) else {
 		return;
@@ -218,68 +197,5 @@ fn append_line(timestamp: &str, source: &str, level: &str, message: &str) {
 	{
 		let node: web_sys::Node = first.into();
 		let _ = container.remove_child(&node);
-	}
-}
-
-/// Map a lowercase log level string to a CSS color class.
-pub fn level_class(level: &str) -> reinhardt::pages::prelude::ClassToken {
-	match level {
-		"error" => STYLES.log_line_error(),
-		"warn" => STYLES.log_line_warning(),
-		"debug" => STYLES.log_line_muted(),
-		_ => STYLES.log_line_default(),
-	}
-}
-
-#[cfg(any(wasm, test))]
-fn log_line_class(level: &str) -> reinhardt::pages::style::ClassList {
-	STYLES.log_line() + level_class(level)
-}
-
-// Non-WASM stubs so server-side callers (and unit tests) can compile.
-#[cfg(not(wasm))]
-#[allow(dead_code)]
-pub fn append(_payload: AppLogPayload) {}
-
-#[cfg(not(wasm))]
-#[allow(dead_code)]
-pub fn append_build(_payload: BuildLogPayload) {}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-	use rstest::rstest;
-
-	#[rstest]
-	fn test_level_class_maps_known_levels() {
-		// Act
-		let error = level_class("error");
-		let warning = level_class("warn");
-		let muted = level_class("debug");
-		let default = level_class("unknown");
-
-		// Assert
-		assert_eq!(error.as_str(), STYLES.log_line_error().as_str());
-		assert_eq!(warning.as_str(), STYLES.log_line_warning().as_str());
-		assert_eq!(muted.as_str(), STYLES.log_line_muted().as_str());
-		assert_eq!(default.as_str(), STYLES.log_line_default().as_str());
-	}
-
-	#[rstest]
-	fn test_log_line_class_composes_generated_base_and_level_tokens() {
-		// Act
-		let class = log_line_class("error");
-
-		// Assert
-		assert_eq!(
-			class.as_str(),
-			(STYLES.log_line() + STYLES.log_line_error()).as_str()
-		);
-	}
-
-	#[rstest]
-	fn test_max_lines_is_1000() {
-		// Guard against accidental regressions of the DOM buffer cap.
-		assert_eq!(MAX_LINES, 1000);
 	}
 }
