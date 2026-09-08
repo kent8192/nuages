@@ -11,13 +11,19 @@ use std::rc::Rc;
 use reinhardt::pages::ClientLauncher;
 use reinhardt::test::fixtures::wasm::{msw_worker, screen, wasm_test_env};
 use reinhardt::test::wasm::{UserEvent, wait_for};
+use reinhardt_cloud_dashboard::apps::auth::server_fn::login::login;
 use reinhardt_cloud_dashboard::apps::auth::server_fn::me::me;
+use reinhardt_cloud_dashboard::apps::auth::server_fn::oauth_providers::list_oauth_providers;
 use reinhardt_cloud_dashboard::apps::clusters::server_fn::{
 	ClusterInfo, ClusterTokenInfo, create_cluster_for_current_org, list_clusters_for_current_org,
 };
+use reinhardt_cloud_dashboard::apps::dashboard::client::style::STYLES;
+use reinhardt_cloud_dashboard::apps::deployments::server_fn::{
+	DeploymentInfo, list_deployments_for_current_org,
+};
 use reinhardt_cloud_dashboard::client::router::init_router;
-use reinhardt_cloud_dashboard::shared::UserInfo;
 use reinhardt_cloud_dashboard::shared::client::state;
+use reinhardt_cloud_dashboard::shared::{AuthResponse, UserInfo};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_test::*;
@@ -65,6 +71,131 @@ fn cluster_fixture() -> ClusterInfo {
 		is_active: true,
 		token_last_rotated_at: Some("2026-06-21T00:00:00Z".to_string()),
 	}
+}
+
+#[rstest::rstest]
+#[test_attr(wasm_bindgen_test)]
+async fn login_navigates_to_overview_with_current_organization_counts() {
+	// Arrange
+	let _env = wasm_test_env();
+	let worker = msw_worker().await;
+	worker.handle_server_fn::<list_oauth_providers::marker>(|_| Ok(vec![]));
+	worker.handle_server_fn::<login::marker>(|args| {
+		assert_eq!(args.request.username, "alice");
+		assert_eq!(args.request.password, "example-password");
+		Ok(AuthResponse {
+			success: true,
+			user: None,
+		})
+	});
+	worker.handle_server_fn::<me::marker>(|_| {
+		Ok(UserInfo {
+			id: "550e8400-e29b-41d4-a716-446655440000".to_owned(),
+			username: "alice".to_owned(),
+			email: "alice@example.com".to_owned(),
+		})
+	});
+	worker.handle_server_fn::<list_clusters_for_current_org::marker>(|_| {
+		Ok(vec![
+			cluster_fixture(),
+			ClusterInfo {
+				id: 43,
+				..cluster_fixture()
+			},
+		])
+	});
+	worker.handle_server_fn::<list_deployments_for_current_org::marker>(|_| {
+		Ok(vec![DeploymentInfo {
+			id: 7,
+			project_name: "web".to_owned(),
+			cluster_id: 42,
+			status: "running".to_owned(),
+			image: "registry.example.com/web:v1".to_owned(),
+		}])
+	});
+	let document = web_sys::window()
+		.expect("window")
+		.document()
+		.expect("document");
+	let selector = format!(".{}", STYLES.metric_value().as_str());
+
+	// Act
+	launch_dashboard_at("/login");
+	let screen = screen();
+	let username: HtmlInputElement = screen
+		.get_by_label_text("Username")
+		.get()
+		.dyn_into()
+		.expect("username");
+	let password: HtmlInputElement = screen
+		.get_by_label_text("Password")
+		.get()
+		.dyn_into()
+		.expect("password");
+	UserEvent::type_text(&username, "alice");
+	UserEvent::type_text(&password, "example-password");
+	let form: HtmlFormElement = screen
+		.get_by_role_with_name("button", "Sign in")
+		.get()
+		.parent_element()
+		.expect("login form")
+		.dyn_into()
+		.expect("form element");
+	form.request_submit().expect("submit login form");
+	let document_for_wait = document.clone();
+	let selector_for_wait = selector.clone();
+	wait_for(move || {
+		let metrics = document_for_wait
+			.query_selector_all(&selector_for_wait)
+			.expect("metrics");
+		metrics.length() == 2
+			&& metrics
+				.item(0)
+				.and_then(|node| node.text_content())
+				.as_deref() == Some("2")
+			&& metrics
+				.item(1)
+				.and_then(|node| node.text_content())
+				.as_deref() == Some("1")
+			&& metrics
+				.item(0)
+				.and_then(|node| node.parent_element())
+				.is_some_and(|card| card.closest("[hidden]").expect("hidden ancestor").is_none())
+	})
+	.with_description("visible overview counts loaded from organization queries")
+	.await
+	.expect("overview should show actual resource counts");
+
+	// Assert
+	worker.calls_to_server_fn::<login::marker>().assert_called();
+	worker
+		.calls_to_server_fn::<list_clusters_for_current_org::marker>()
+		.assert_called();
+	worker
+		.calls_to_server_fn::<list_deployments_for_current_org::marker>()
+		.assert_called();
+	let headings = document
+		.query_selector_all("h3")
+		.expect("overview headings");
+	let labels = (0..headings.length())
+		.map(|index| {
+			headings
+				.item(index)
+				.expect("heading")
+				.text_content()
+				.unwrap_or_default()
+		})
+		.collect::<Vec<_>>();
+	assert_eq!(labels, ["Clusters", "Deployments"]);
+	assert_eq!(screen.get_by_text("Healthy").query().is_some(), false);
+	assert_eq!(
+		web_sys::window()
+			.expect("window")
+			.location()
+			.pathname()
+			.expect("pathname"),
+		"/"
+	);
 }
 
 #[wasm_bindgen_test]

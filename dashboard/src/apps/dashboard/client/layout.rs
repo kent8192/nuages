@@ -13,7 +13,9 @@ use reinhardt::pages::{NavigationType, navigate_or_reload, navigation_guard, pag
 
 use crate::apps::auth::server_fn::logout::logout;
 use crate::apps::auth::server_fn::me::me;
+use crate::apps::clusters::server_fn::list_clusters_for_current_org;
 use crate::apps::dashboard::client::style::STYLES;
+use crate::apps::deployments::server_fn::list_deployments_for_current_org;
 use crate::shared::UserInfo;
 use crate::shared::client::routes::route_href;
 use crate::shared::client::style::STYLES as SHARED_STYLES;
@@ -225,10 +227,6 @@ pub fn dashboard_layout(outlet: Outlet) -> Page {
 					}
 					div {
 						class: STYLES.header_actions(),
-						span {
-							class: STYLES.header_health(),
-							"Healthy"
-						}
 						a {
 							href: account_href.clone(),
 							class: SHARED_STYLES.link() + STYLES.header_action(),
@@ -335,9 +333,28 @@ pub fn dashboard_layout(outlet: Outlet) -> Page {
 	})
 }
 
+fn overview_count<T: Clone>(snapshot: QuerySnapshot<Vec<T>, ServerFnError>) -> String {
+	if snapshot.error.is_some() || snapshot.refetch_error.is_some() {
+		return "Unavailable".to_owned();
+	}
+	match snapshot.data {
+		Some(items) => items.len().to_string(),
+		None if snapshot.is_fetching => "Loading...".to_owned(),
+		None => "Unavailable".to_owned(),
+	}
+}
+
 /// Render the main dashboard overview.
 #[component("/", name = "dashboard:home")]
 pub fn dashboard_shell() -> Page {
+	let clusters = use_query(
+		list_clusters_for_current_org::query(),
+		QueryOptions::new().enabled(cfg!(wasm)),
+	);
+	let deployments = use_query(
+		list_deployments_for_current_org::query(),
+		QueryOptions::new().enabled(cfg!(wasm)),
+	);
 	let clusters_href = route_href("clusters:list", "/clusters");
 	let deployments_href = route_href("deployments:list", "/deployments");
 	let github_href = route_href("github:repositories", "/github");
@@ -371,7 +388,7 @@ pub fn dashboard_shell() -> Page {
 					}
 					p {
 						class: STYLES.metric_value(),
-						"0"
+						{ self::overview_count(clusters.snapshot()) }
 					}
 					p {
 						class: STYLES.metric_detail(),
@@ -386,26 +403,11 @@ pub fn dashboard_shell() -> Page {
 					}
 					p {
 						class: STYLES.metric_value(),
-						"0"
+						{ self::overview_count(deployments.snapshot()) }
 					}
 					p {
 						class: STYLES.metric_detail(),
-						"active releases"
-					}
-				}
-				div {
-					class: SHARED_STYLES.panel_pad() + STYLES.metric_card() + STYLES.metric_status(),
-					h3 {
-						class: STYLES.metric_label(),
-						"System Status"
-					}
-					p {
-						class: STYLES.healthy_status(),
-						"Healthy"
-					}
-					p {
-						class: STYLES.metric_detail(),
-						"router and websocket ready"
+						"registered deployments"
 					}
 				}
 			}
@@ -493,6 +495,40 @@ mod tests {
 			is_fetching: status == QueryStatus::Pending,
 			is_stale: false,
 		}
+	}
+
+	#[rstest]
+	#[case::empty(Some(vec![]), false, false, "0")]
+	#[case::populated(Some(vec![1, 2, 3]), false, false, "3")]
+	#[case::loading(None, true, false, "Loading...")]
+	#[case::not_loaded(None, false, false, "Unavailable")]
+	#[case::failed(None, false, true, "Unavailable")]
+	#[case::failed_refresh(Some(vec![1, 2]), false, true, "Unavailable")]
+	fn overview_counts_reflect_query_results(
+		#[case] data: Option<Vec<i32>>,
+		#[case] is_fetching: bool,
+		#[case] failed: bool,
+		#[case] expected: &str,
+	) {
+		// Arrange
+		let snapshot = QuerySnapshot {
+			status: if data.is_some() {
+				QueryStatus::Success
+			} else {
+				QueryStatus::Pending
+			},
+			data,
+			error: None,
+			refetch_error: failed.then(|| ServerFnError::server(503, "Unavailable")),
+			is_fetching,
+			is_stale: false,
+		};
+
+		// Act
+		let count = super::overview_count(snapshot);
+
+		// Assert
+		assert_eq!(count, expected);
 	}
 
 	#[rstest]
@@ -642,13 +678,18 @@ mod tests {
 		assert_eq!(active, expected);
 	}
 
+	#[cfg(native)]
 	#[rstest]
 	fn dashboard_shell_renders_overview_links() {
 		// Arrange
-		let shell = super::dashboard_shell(super::DashboardShellProps {});
+		let mut html = String::new();
 
 		// Act
-		let html = shell.render_to_string();
+		let _screen = reinhardt::pages::testing::component::render(|| {
+			let shell = super::dashboard_shell(super::DashboardShellProps {});
+			html = shell.render_to_string();
+			shell
+		});
 
 		// Assert
 		let hrefs = html

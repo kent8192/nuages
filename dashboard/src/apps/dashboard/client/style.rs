@@ -69,24 +69,6 @@ pub static STYLES: DashboardStyles = style! {
 			gap: 0.75rem;
 		}
 	}
-	.header_health {
-		display: none;
-		padding: 0.375rem;
-		padding-left: 0.75rem;
-		padding-right: 0.75rem;
-		border-width: 1px;
-		border-style: solid;
-		border-color: #d8d2c3;
-		border-radius: 0.375rem;
-		background-color: #f6f5f2;
-		font-size: 0.75rem;
-		font-weight: 700;
-		text-transform: uppercase;
-		color: #625f68;
-		@media (min-width: 640px) {
-			display: inline-flex;
-		}
-	}
 	.header_action {
 		font-size: 0.875rem;
 	}
@@ -197,7 +179,7 @@ pub static STYLES: DashboardStyles = style! {
 		display: grid;
 		gap: 1rem;
 		@media (min-width: 768px) {
-			grid-template-columns: unchecked_fn!(repeat(3, minmax(0, 1fr)));
+			grid-template-columns: unchecked_fn!(repeat(2, minmax(0, 1fr)));
 		}
 	}
 	.metric_card {
@@ -209,9 +191,6 @@ pub static STYLES: DashboardStyles = style! {
 	}
 	.metric_deployments {
 		border-left-color: #1d4ed8;
-	}
-	.metric_status {
-		border-left-color: #b45309;
 	}
 	.metric_label {
 		font-size: 0.75rem;
@@ -230,18 +209,6 @@ pub static STYLES: DashboardStyles = style! {
 		font-size: 0.75rem;
 		font-weight: 600;
 		color: #625f68;
-	}
-	.healthy_status {
-		display: inline-flex;
-		margin-top: 0.75rem;
-		padding: 0.25rem;
-		padding-left: 0.625rem;
-		padding-right: 0.625rem;
-		border-radius: 9999px;
-		background-color: #e0f2f0;
-		font-size: 0.875rem;
-		font-weight: 700;
-		color: #0a4d48;
 	}
 	.overview_panels {
 		display: grid;
