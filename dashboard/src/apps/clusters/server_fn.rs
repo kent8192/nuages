@@ -98,6 +98,16 @@ fn validated_cluster_create_payload(
 }
 
 #[cfg(native)]
+fn validated_cluster_update_payload(
+	mut request: UpdateClusterFormRequest,
+) -> Result<UpdateClusterFormRequest, ServerFnError> {
+	request.name = request.name.trim().to_owned();
+	request.api_url = request.api_url.trim().to_owned();
+	reinhardt::Validate::validate(&request).map_err(ServerFnError::from)?;
+	Ok(request)
+}
+
+#[cfg(native)]
 fn cluster_save_error(error: AppError) -> ServerFnError {
 	use crate::apps::clusters::models::Cluster;
 
@@ -205,25 +215,11 @@ pub async fn update_cluster_for_current_org(
 		crate::apps::organizations::permissions::Action::ClusterUpdate,
 	)
 	.await?;
-	reinhardt::Validate::validate(&request).map_err(ServerFnError::from)?;
+	let request = validated_cluster_update_payload(request)?;
 	let cluster_id: i64 = request
 		.cluster_id
 		.parse()
 		.map_err(|_| ServerFnError::validation([("cluster_id", "Select a valid cluster")]))?;
-	let name = request.name.trim().to_string();
-	let api_url = request.api_url.trim().to_string();
-	if name.is_empty() || name.len() > 63 {
-		return Err(ServerFnError::validation([(
-			"name",
-			"Cluster name must be 1-63 characters",
-		)]));
-	}
-	if api_url.is_empty() || api_url.len() > 2048 {
-		return Err(ServerFnError::validation([(
-			"api_url",
-			"API URL must be 1-2048 characters",
-		)]));
-	}
 
 	let manager = Cluster::objects();
 	let mut cluster = manager
@@ -235,8 +231,8 @@ pub async fn update_cluster_for_current_org(
 		.ok_or_else(|| {
 			ServerFnError::validation([("cluster_id", "The selected cluster is not available")])
 		})?;
-	cluster.name = name;
-	cluster.api_url = api_url;
+	cluster.name = request.name;
+	cluster.api_url = request.api_url;
 	cluster.is_active = request.is_active;
 	let updated = manager.update(&cluster).await.map_err(cluster_save_error)?;
 	Ok(cluster_info(updated))
@@ -321,9 +317,71 @@ mod tests {
 	use reinhardt::pages::server_fn::ServerFnErrorKind;
 	use rstest::rstest;
 
-	use super::{cluster_delete_error, cluster_save_error, validated_cluster_create_payload};
+	use super::{
+		UpdateClusterFormRequest, cluster_delete_error, cluster_save_error,
+		validated_cluster_create_payload, validated_cluster_update_payload,
+	};
 	use crate::apps::clusters::model_form::ClusterCreateFormData;
 	use reinhardt::core::exception::{DatabaseError, DatabaseErrorKind, Error};
+
+	#[rstest]
+	#[case::ascii("production".to_owned())]
+	#[case::unicode_boundary("界".repeat(63))]
+	fn cluster_update_validates_normalized_values(#[case] name: String) {
+		// Arrange
+		let request = UpdateClusterFormRequest {
+			cluster_id: "42".to_owned(),
+			name: format!(" {name} "),
+			api_url: " https://kubernetes.example.com:6443 ".to_owned(),
+			is_active: false,
+		};
+
+		// Act
+		let cleaned = validated_cluster_update_payload(request).expect("valid trimmed update");
+
+		// Assert
+		assert_eq!(
+			cleaned,
+			UpdateClusterFormRequest {
+				cluster_id: "42".to_owned(),
+				name,
+				api_url: "https://kubernetes.example.com:6443".to_owned(),
+				is_active: false,
+			}
+		);
+	}
+
+	#[rstest]
+	#[case::blank_name("   ".to_owned(), "https://cluster.example.com", "name")]
+	#[case::long_name("a".repeat(64), "https://cluster.example.com", "name")]
+	#[case::invalid_url("production".to_owned(), " invalid ", "api_url")]
+	fn cluster_update_rejects_invalid_normalized_values(
+		#[case] name: String,
+		#[case] api_url: &str,
+		#[case] field: &str,
+	) {
+		// Arrange
+		let request = UpdateClusterFormRequest {
+			cluster_id: "42".to_owned(),
+			name,
+			api_url: api_url.to_owned(),
+			is_active: true,
+		};
+
+		// Act
+		let error = validated_cluster_update_payload(request).expect_err("invalid update");
+
+		// Assert
+		assert_eq!(error.kind(), ServerFnErrorKind::Validation);
+		assert_eq!(
+			error
+				.field_errors()
+				.iter()
+				.map(|error| error.field())
+				.collect::<Vec<_>>(),
+			[field]
+		);
+	}
 
 	#[rstest]
 	fn cluster_create_model_form_trims_public_values() {
