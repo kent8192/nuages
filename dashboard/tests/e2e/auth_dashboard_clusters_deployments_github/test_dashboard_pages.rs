@@ -1,8 +1,10 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, ensure};
-use reinhardt_test::{BrowserClient, BrowserConfig, browser_client};
+use reinhardt_test::{BrowserClient, BrowserConfig, browser_config};
 use rstest::rstest;
+
+use super::browser_session::BrowserSession;
 
 const AUTHENTICATED_ROUTES: &[RouteExpectation] = &[
 	RouteExpectation::new(
@@ -341,7 +343,7 @@ async fn verify_public_route(
 	viewport: &Viewport,
 	route: &RouteExpectation,
 ) -> Result<()> {
-	let browser = BrowserClient::connect(browser_config.clone())
+	let browser = BrowserSession::connect(browser_config.clone())
 		.await
 		.with_context(|| format!("failed to create fresh browser for {}", route.path))?;
 	let verification: Result<()> = async {
@@ -349,19 +351,15 @@ async fn verify_public_route(
 		verify_route(&browser, config, viewport, route).await
 	}
 	.await;
-	let close = browser
-		.close()
-		.await
-		.with_context(|| format!("failed to close fresh browser for {}", route.path));
 	verification?;
-	close
+	Ok(())
 }
 
 async fn verify_unauthenticated_redirect(
 	browser_config: &BrowserConfig,
 	config: &DashboardE2eConfig,
 ) -> Result<()> {
-	let browser = BrowserClient::connect(browser_config.clone())
+	let browser = BrowserSession::connect(browser_config.clone())
 		.await
 		.context("failed to create fresh browser for the unauthenticated route check")?;
 	let verification: Result<()> = async {
@@ -388,12 +386,8 @@ async fn verify_unauthenticated_redirect(
 		Ok(())
 	}
 	.await;
-	let close = browser
-		.close()
-		.await
-		.context("failed to close the unauthenticated route browser");
 	verification?;
-	close
+	Ok(())
 }
 
 async fn run_dashboard_routes(browser: &BrowserClient, config: &DashboardE2eConfig) -> Result<()> {
@@ -421,17 +415,13 @@ async fn run_dashboard_routes(browser: &BrowserClient, config: &DashboardE2eConf
 #[tokio::test]
 #[ignore = "requires caller-managed ChromeDriver, Dashboard, PostgreSQL, and Redis"]
 async fn dashboard_routes_load_without_style_or_overflow_regressions(
-	#[future] browser_client: BrowserClient,
+	browser_config: BrowserConfig,
 ) -> Result<()> {
 	let config = DashboardE2eConfig::from_env()?;
-	let browser = browser_client.await;
+	let browser = BrowserSession::connect(browser_config).await?;
 	let verification = run_dashboard_routes(&browser, &config).await;
-	let close = browser
-		.close()
-		.await
-		.context("failed to close the authenticated Dashboard browser session");
 	verification?;
-	close
+	Ok(())
 }
 
 #[rstest]
