@@ -167,7 +167,7 @@ mod tests {
 		assert_eq!(id, "cluster-health-ns-cluster-region-agent");
 	}
 
-	#[test]
+	#[rstest]
 	fn cluster_health_rows_use_generated_state_and_markup_tokens() {
 		// Act
 		let render: fn(&str, &str, &str, &str, &str, &str, u32) -> String =

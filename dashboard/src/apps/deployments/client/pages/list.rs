@@ -683,6 +683,8 @@ fn render_neutral_refetch_notice(message: &'static str) -> Page {
 
 #[cfg(test)]
 mod tests {
+	use rstest::rstest;
+
 	use super::{
 		deployment_status_token, render_deployment_status_badge, render_neutral_refetch_notice,
 	};
@@ -743,7 +745,7 @@ mod tests {
 		});
 	}
 
-	#[test]
+	#[rstest]
 	fn deployment_status_badge_composes_shared_base_and_state_tokens() {
 		// Act
 		let html = render_deployment_status_badge("running").render_to_string();
@@ -759,7 +761,7 @@ mod tests {
 		);
 	}
 
-	#[test]
+	#[rstest]
 	fn deployment_status_token_remains_typed_until_badge_composition() {
 		// Act
 		let token = deployment_status_token(&DeploymentState::Running);
@@ -768,7 +770,7 @@ mod tests {
 		assert_eq!(token.as_str(), SHARED_STYLES.status_running().as_str());
 	}
 
-	#[test]
+	#[rstest]
 	fn operation_query_states_keep_local_text_size_and_distinct_colors() {
 		// Arrange
 		let source = include_str!("list.rs");
@@ -813,7 +815,7 @@ mod tests {
 		assert!(!production_source.contains("SHARED_STYLES.muted() + STYLES.operation_state()"));
 	}
 
-	#[test]
+	#[rstest]
 	fn page_layout_token_is_used_with_desktop_columns_contract() {
 		// Arrange
 		let source = include_str!("list.rs");
@@ -831,7 +833,7 @@ mod tests {
 		));
 	}
 
-	#[test]
+	#[rstest]
 	fn neutral_preview_notice_renders_composed_generated_tokens() {
 		// Act
 		let html = render_neutral_refetch_notice("Loading previews...").render_to_string();

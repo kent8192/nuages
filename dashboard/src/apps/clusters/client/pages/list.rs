@@ -1169,7 +1169,7 @@ mod tests {
 		}
 	}
 
-	#[test]
+	#[rstest]
 	fn cluster_token_confirmation_renders_the_generated_token_value_class() {
 		ReactiveScope::run(|| {
 			// Arrange
@@ -1193,7 +1193,7 @@ mod tests {
 		});
 	}
 
-	#[test]
+	#[rstest]
 	fn cluster_inventory_renders_generated_table_and_active_state_tokens() {
 		// Arrange
 		let clusters = vec![

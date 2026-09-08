@@ -250,7 +250,7 @@ mod tests {
 	use super::*;
 	use rstest::rstest;
 
-	#[test]
+	#[rstest]
 	fn test_level_class_maps_known_levels() {
 		// Act
 		let error = level_class("error");
@@ -265,7 +265,7 @@ mod tests {
 		assert_eq!(default.as_str(), STYLES.log_line_default().as_str());
 	}
 
-	#[test]
+	#[rstest]
 	fn test_log_line_class_composes_generated_base_and_level_tokens() {
 		// Act
 		let class = log_line_class("error");
